@@ -1,0 +1,25 @@
+{
+  "users": [
+    {
+      "name": "Johan",
+      "email": "johanusa16@gmail.com",
+      "role": "patient",
+      "password": "123@123",
+      "id": "bea851a1-1428-4720-a3e5-54c1f056efd4",
+      "createdAt": "2025-01-27T04:47:03.576Z",
+      "updatedAt": "2025-01-27T04:47:03.576Z"
+    },
+    {
+      "name": "Joji",
+      "email": "johanusa160@gmail.com",
+      "role": "admin",
+      "password": "123@123",
+      "id": "bc4b8e72-eaf1-490c-ae52-324b5b9b11ae",
+      "createdAt": "2025-01-27T19:48:43.135Z",
+      "updatedAt": "2025-01-27T19:48:43.135Z"
+    }
+  ],
+  "medications": [],
+  "prescriptions": [],
+  "adherenceRecords": []
+}
