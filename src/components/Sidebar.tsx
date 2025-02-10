@@ -1,46 +1,83 @@
 import Link from "next/link"
-import { Home, Calendar, Info, PlusCircle, HelpCircle } from "lucide-react"
+import { Home, Calendar, Bell, Info, HelpCircle } from "lucide-react"
 
 const Sidebar = () => {
   return (
-    <aside className="bg-gray-800 text-white w-64 min-h-screen p-4">
-      <nav>
-        <ul className="space-y-2">
-          <li>
-            <Link href="/" className="flex items-center space-x-2 p-2 rounded-lg bg-gray-900">
-              <Home className="h-5 w-5" />
-              <span>Dashboard</span>
+    <aside className="fixed h-[calc(100vh-4rem)] w-64 bg-white shadow-md overflow-y-auto">
+      <nav className="p-4">
+        <div className="space-y-1">
+          {/* Dashboard - Primary navigation */}
+          <Link
+            href="/patient/dashboard"
+            className="flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group"
+          >
+            <Home className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
+            <span className="ml-3 text-sm font-medium group-hover:text-blue-600">Dashboard</span>
+          </Link>
+
+          {/* Schedule with History - Prominent placement */}
+          <Link
+            href="/patient/schedule"
+            className="flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group"
+          >
+            <Calendar className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
+            <span className="ml-3 text-sm font-medium group-hover:text-blue-600">
+              Schedule & History
+            </span>
+          </Link>
+
+          {/* Medications */}
+          <Link
+            href="/patient/medications"
+            className="flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group"
+          >
+            <Info className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
+            <span className="ml-3 text-sm font-medium group-hover:text-blue-600">Medications</span>
+          </Link>
+
+          {/* Notifications */}
+          <Link
+            href="/patient/notifications"
+            className="flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group"
+          >
+            <Bell className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
+            <span className="ml-3 text-sm font-medium group-hover:text-blue-600">Notifications</span>
+          </Link>
+
+          {/* Help & Support */}
+          <Link
+            href="/patient/help"
+            className="flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group"
+          >
+            <HelpCircle className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
+            <span className="ml-3 text-sm font-medium group-hover:text-blue-600">Help & Support</span>
+          </Link>
+        </div>
+
+        <div className="mt-8 pt-8 border-t border-gray-200">
+          <div className="px-4 py-2">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Quick Links
+            </h3>
+          </div>
+          <div className="mt-2 space-y-1">
+            <Link
+              href="/patient/settings"
+              className="flex items-center px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+            >
+              Settings
             </Link>
-          </li>
-          <li>
-            <Link href="/schedule" className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-700">
-              <Calendar className="h-5 w-5" />
-              <span>Medication Schedule</span>
+            <Link
+              href="/patient/profile"
+              className="flex items-center px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+            >
+              Profile
             </Link>
-          </li>
-          <li>
-            <Link href="/info" className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-700">
-              <Info className="h-5 w-5" />
-              <span>Medication Information</span>
-            </Link>
-          </li>
-          <li>
-            <Link href="/log" className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-700">
-              <PlusCircle className="h-5 w-5" />
-              <span>Log Medication</span>
-            </Link>
-          </li>
-          <li>
-            <Link href="/help" className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-700">
-              <HelpCircle className="h-5 w-5" />
-              <span>Help/Support</span>
-            </Link>
-          </li>
-        </ul>
+          </div>
+        </div>
       </nav>
     </aside>
   )
 }
 
 export default Sidebar
-
