@@ -1,51 +1,9 @@
-export interface User {
-  id: string
-  name: string
-  email: string
-  password: string // Added password field
-  role: "patient" | "admin" | "helper"
-  createdAt: string
-  updatedAt: string
-}
-
 export interface Medication {
-  id: string
-  name: string
-  description: string
-  dosage: string
-  frequency: string
-  createdAt: string
-  updatedAt: string
-}
-
-export interface Prescription {
-  id: string
-  patientId: string
-  medicationId: string
-  prescribedById: string
-  startDate: string
-  endDate: string
-  instructions: string
-  status: "active" | "completed" | "cancelled"
-  createdAt: string
-  updatedAt: string
-}
-
-export interface AdherenceRecord {
-  id: string
-  prescriptionId: string
-  patientId: string
-  medicationId: string
-  takenAt: string
-  status: "taken" | "missed" | "delayed"
-  notes?: string
-  createdAt: string
-  updatedAt: string
-}
-
-export interface DatabaseSchema {
-  users: User[]
-  medications: Medication[]
-  prescriptions: Prescription[]
-  adherenceRecords: AdherenceRecord[]
+  partitionKey: string; // The partition key for the entity, used for grouping entities together (e.g., patientId)
+  rowKey: string; // The row key for the entity, used for uniquely identifying the entity within the partition
+  name: string; // Name of the medication
+  dosage: string; // Dosage of the medication
+  frequency: string; // Frequency of the medication
+  time: string; // Time of day to take the medication
+  instructions?: string; // Special instructions for taking the medication (optional)
 }

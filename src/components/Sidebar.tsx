@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Home, Calendar, Bell, Info, HelpCircle } from "lucide-react"
+import { Home, Calendar, Bell, Info, HelpCircle, Bot } from "lucide-react"
 
 const Sidebar = () => {
   return (
@@ -42,6 +42,15 @@ const Sidebar = () => {
           >
             <Bell className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
             <span className="ml-3 text-sm font-medium group-hover:text-blue-600">Notifications</span>
+          </Link>
+
+          {/* AI Assistant */}
+          <Link
+            href="/patient/ai-assistant"
+            className="flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group"
+          >
+            <Bot className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
+            <span className="ml-3 text-sm font-medium group-hover:text-blue-600">AI Assistant</span>
           </Link>
 
           {/* Help & Support */}
