@@ -1,40 +1,42 @@
 "use client"
 
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
+import AdminSidebar from "@/components/AdminSidebar"
+import AdminDashboardOverview from "@/components/AdminDashboardOverview"
+import PatientListTable from "@/components/PatientListTable"
+import AdminHeader from "@/components/AdminHeader"
 
 export default function AdminDashboard() {
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Medicine Administrator Dashboard</h1>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Patient Management Card */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Patient Management</h2>
-          <p className="text-gray-600 mb-4">Manage patient profiles and medications</p>
-          <button className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-            View Patients
-          </button>
-        </div>
+    <div className="min-h-screen bg-gray-100">
+      {/* Header */}
+      <AdminHeader unreadNotifications={5} />
 
-        {/* Prescription Management Card */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Prescriptions</h2>
-          <p className="text-gray-600 mb-4">Update and monitor medication prescriptions</p>
-          <button className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-            Manage Prescriptions
-          </button>
-        </div>
+      <div className="flex pt-16"> {/* Add padding-top to account for fixed header */}
+        {/* Sidebar */}
+        <AdminSidebar />
 
-        {/* Adherence Monitoring Card */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Adherence Monitoring</h2>
-          <p className="text-gray-600 mb-4">Track patient medication adherence</p>
-          <button className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-            View Reports
-          </button>
-        </div>
+        {/* Main Content */}
+        <main className="flex-1 overflow-x-hidden overflow-y-auto ml-64 p-6">
+          <div className="container mx-auto">
+            {/* Page Header */}
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-gray-900">Patient Management</h1>
+              <p className="mt-1 text-sm text-gray-600">
+                Monitor and manage patient medications
+              </p>
+            </div>
+
+            {/* Compact Overview Cards */}
+            <div className="mb-6">
+              <AdminDashboardOverview />
+            </div>
+
+            {/* Patient List Table (full width) */}
+            <div>
+              <PatientListTable />
+            </div>
+          </div>
+        </main>
       </div>
     </div>
   )
