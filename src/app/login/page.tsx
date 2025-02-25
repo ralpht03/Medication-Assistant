@@ -7,15 +7,12 @@ import Link from "next/link";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("patient");
   const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setIsLoading(true);
 
     try {
       const response = await fetch("/api/auth/login", {
@@ -23,33 +20,19 @@ export default function LoginPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password, role }),
+        body: JSON.stringify({ email, password }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
+        const data = await response.json();
         throw new Error(data.message || "Login failed");
       }
 
-      // Role-based routing
-      switch (data.role) {
-        case "patient":
-          router.push("/patient/dashboard");
-          break;
-        case "admin":
-          router.push("/admin/dashboard");
-          break;
-        case "helper":
-          router.push("/helper/dashboard");
-          break;
-        default:
-          router.push("/patient/dashboard");
-      }
+      const data = await response.json();
+      localStorage.setItem("user", JSON.stringify(data.user));
+      router.push("/patient/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
-      setIsLoading(false);
+      setError(err instanceof Error ? err.message : "Login failed");
     }
   };
 
@@ -64,6 +47,12 @@ export default function LoginPage() {
             Sign in to access your dashboard
           </p>
         </div>
+
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+            <span className="block sm:inline">{error}</span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-6">
           <div className="rounded-md shadow-sm -space-y-px">
@@ -81,7 +70,6 @@ export default function LoginPage() {
                 placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                disabled={isLoading}
               />
             </div>
             <div>
@@ -98,54 +86,25 @@ export default function LoginPage() {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                disabled={isLoading}
               />
             </div>
           </div>
 
           <div>
-            <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-              Sign in as
-            </label>
-            <select
-              id="role"
-              name="role"
-              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              disabled={isLoading}
-            >
-              <option value="patient">Patient</option>
-              <option value="admin">Medicine Administrator</option>
-              <option value="helper">Patient Helper</option>
-            </select>
-          </div>
-
-          {error && (
-            <div className="text-red-500 text-sm text-center">
-              {error}
-            </div>
-          )}
-
-          <div>
             <button
               type="submit"
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={isLoading}
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
-              {isLoading ? "Signing in..." : "Sign in"}
+              Sign in
             </button>
           </div>
-        </form>
 
-        <div className="text-sm text-center">
-          <Link 
-            href="/signup" 
-            className="font-medium text-blue-600 hover:text-blue-500"
-          >
-            Don&apos;t have an account? Sign up
-          </Link>
-        </div>
+          <div className="text-sm text-center">
+            <Link href="/signup" className="font-medium text-blue-600 hover:text-blue-500">
+              Don&apos;t have an account? Sign up
+            </Link>
+          </div>
+        </form>
       </div>
     </div>
   );

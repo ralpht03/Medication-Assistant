@@ -41,7 +41,20 @@ export default function SignUpPage() {
         throw new Error(data.message || "Sign up failed")
       }
 
-      router.push(`/${data.role}/dashboard`)
+      // Redirect based on role from the user object
+      switch (data.user.role) {
+        case "patient":
+          router.push("/patient/dashboard")
+          break
+        case "helper":
+          router.push("/helper/dashboard")
+          break
+        case "admin":
+          router.push("/admin/dashboard")
+          break
+        default:
+          router.push("/dashboard")
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred")
     } finally {

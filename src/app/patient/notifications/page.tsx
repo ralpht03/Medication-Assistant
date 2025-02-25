@@ -51,12 +51,11 @@ export default function NotificationsPage() {
   return (
     <div className="min-h-screen bg-gray-100">
       <Header />
-      <div className="flex h-screen pt-16">
-        <div className="w-64 flex-shrink-0">
-          <Sidebar />
-        </div>
-        <main className="flex-1 overflow-y-auto">
-          <div className="p-6 max-w-4xl mx-auto">
+      <div className="flex">
+        <Sidebar />
+        <main className="flex-1 p-8 ml-64">
+          <div className="max-w-4xl mx-auto">
+            <h1 className="text-3xl font-bold mb-8">Notifications</h1>
             <div className="bg-white rounded-lg shadow-md">
               <NotificationsPanel
                 notifications={notifications}

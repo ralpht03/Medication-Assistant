@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { AzureTableService } from '@/lib/azure/table-service'
+
+const usersTable = new AzureTableService('Users')
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +15,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user already exists
-    const existingUsers = await db.users.query({ email })
+    const existingUsers = await usersTable.queryEntities(`email eq '${email}'`)
     if (existingUsers.length > 0) {
       return NextResponse.json(
         { message: 'User already exists' },
@@ -30,31 +32,29 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // In a real application, you would:
-    // 1. Hash the password before storing
-    // 2. Validate email format
-    // 3. Implement email verification
-    // 4. Add additional security measures
-    const user = await db.users.create({
-      name,
+    // Create user in Azure Table Storage
+    const user = {
+      PartitionKey: role,
+      RowKey: crypto.randomUUID(),
       email,
-      role: role as 'patient' | 'admin' | 'helper',
-      // In production, store hashed password
-      password: password
-    })
+      passwordHash: password, // In production, use proper password hashing
+      role,
+      firstName: name.split(' ')[0],
+      lastName: name.split(' ')[1] || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }
 
-    // In a real application, you would:
-    // 1. Create a session
-    // 2. Set secure HTTP-only cookies
-    // 3. Return proper tokens
+    await usersTable.createEntity(user)
+
     return NextResponse.json({
       user: {
-        id: user.id,
-        name: user.name,
+        id: user.RowKey,
         email: user.email,
-        role: user.role
-      },
-      role: user.role
+        role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName
+      }
     })
 
   } catch (error) {

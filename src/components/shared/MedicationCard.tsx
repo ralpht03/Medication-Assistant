@@ -1,31 +1,35 @@
 import { Check, Clock, X, Bell } from "lucide-react";
 import { useRef, useState } from "react";
 import axios from "axios"; // Import axios
+import { Medications } from '@/lib/types';
+
+export type MedicationStatus = 'taken' | 'missed' | 'upcoming';
+
+const statusConfig: Record<MedicationStatus, {
+  icon: any; // Or proper Lucide icon type
+  className: string;
+  text: string;
+}> = {
+  taken: { icon: Check, className: "bg-green-100 text-green-800", text: "Taken" },
+  missed: { icon: X, className: "bg-red-100 text-red-800", text: "Missed" },
+  upcoming: { icon: Clock, className: "bg-yellow-100 text-yellow-800", text: "Upcoming" }
+};
 
 interface MedicationCardProps {
-  medication: {
-    id: string | number;
-    name: string;
-    dosage: string;
+  medication: Medications & { 
+    status: MedicationStatus;
     time: string;
-    status: "taken" | "missed" | "upcoming";
-    instructions?: string;
   };
   showActions?: boolean;
   onTake?: () => void;
   onSnooze?: () => void;
 }
 
-const statusConfig = {
-  taken: { icon: Check, className: "bg-green-100 text-green-800", text: "Taken" },
-  missed: { icon: X, className: "bg-red-100 text-red-800", text: "Missed" },
-  upcoming: { icon: Clock, className: "bg-yellow-100 text-yellow-800", text: "Upcoming" }
-};
-
 const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: MedicationCardProps) => {
   const StatusIcon = statusConfig[medication.status].icon;
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -45,17 +49,27 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
   };
 
   // Function to capture an image from the video feed
-  const captureImage = () => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return null;
+  const captureImage = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      if (!video || !canvas) return null;
 
-    const ctx = canvas.getContext("2d");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const ctx = canvas.getContext("2d");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    return canvas.toDataURL("image/jpeg"); // Convert frame to base64
+      return canvas.toDataURL("image/jpeg"); // Convert frame to base64
+    } catch (error) {
+      setMessage("Error accessing camera. Please check permissions.");
+      return null;
+    }
   };
 
   // Function to verify pill before marking as taken
@@ -63,7 +77,7 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
     setIsProcessing(true);
     setMessage("Processing...");
 
-    const image = captureImage();
+    const image = await captureImage();
     if (!image) {
       setMessage("Error capturing image.");
       setIsProcessing(false);
@@ -71,17 +85,22 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
     }
 
     try {
-      const response = await axios.post("/api/pill-recognition", { image });
-      const { pill_name, confidence } = response.data;
+      const response = await axios.post("/api/verify-medication", { 
+        image,
+        medicationId: medication.RowKey,
+        patientId: medication.patientId
+      });
+      
+      const { verified, pill_name, confidence } = response.data;
 
-      if (confidence > 0.75 && pill_name.toLowerCase().includes(medication.name.toLowerCase())) {
-        setMessage(`Pill recognized as ${pill_name}. Confidence: ${(confidence * 100).toFixed(2)}%.`);
-        if (onTake) onTake(); // Mark medication as taken
+      if (verified && pill_name.toLowerCase().includes(medication.name.toLowerCase())) {
+        setMessage(`Pill verified as ${pill_name}. Confidence: ${(confidence * 100).toFixed(2)}%.`);
+        if (onTake) onTake();
       } else {
-        setMessage(`Pill does not match. Detected: ${pill_name} (Confidence: ${(confidence * 100).toFixed(2)}%)`);
+        setMessage(`Pill verification failed. Detected: ${pill_name} (Confidence: ${(confidence * 100).toFixed(2)}%)`);
       }
     } catch (error) {
-      console.error("Error identifying pill:", error);
+      console.error("Error verifying medication:", error);
       setMessage("Error verifying medication.");
     }
 

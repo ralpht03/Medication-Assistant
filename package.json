@@ -9,6 +9,11 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@azure/cognitiveservices-customvision-prediction": "^5.1.2",
+    "@azure/data-tables": "^13.3.0",
+    "@azure/ms-rest-js": "^2.7.0",
+    "@azure/storage-blob": "^12.26.0",
+    "@techstark/opencv-js": "^4.10.0-release.1",
     "@types/react-big-calendar": "^1.16.1",
     "axios": "^1.7.9",
     "date-fns": "^4.1.0",

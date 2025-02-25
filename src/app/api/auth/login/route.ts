@@ -1,50 +1,68 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { NextResponse } from 'next/server'
+import { TableClient } from "@azure/data-tables"
 
-export async function POST(request: NextRequest) {
+if (!process.env.AZURE_STORAGE_CONNECTION_STRING) {
+  throw new Error('AZURE_STORAGE_CONNECTION_STRING is not defined in environment variables');
+}
+
+const tableClient = TableClient.fromConnectionString(
+  process.env.AZURE_STORAGE_CONNECTION_STRING,
+  "Users"
+);
+
+export async function POST(request: Request) {
   try {
-    const { email, password, role } = await request.json()
+    const { email, password } = await request.json()
 
-    if (!email || !password || !role) {
+    if (!email || !password) {
       return NextResponse.json(
-        { message: 'Missing required fields' },
+        { message: 'Email and password are required' },
         { status: 400 }
       )
     }
 
-    // In a real application, you would:
-    // 1. Hash the password before querying
-    // 2. Use proper password comparison
-    // 3. Implement proper session management
-    // For demo purposes, we'll just check if a user exists with the email
-    const users = await db.users.query({ email, role })
-    const user = users[0]
-
-    if (!user) {
+    // Query user by email
+    const users = [];
+    const query = `email eq '${email}'`;
+    
+    for await (const user of tableClient.listEntities({
+      queryOptions: { filter: query }
+    })) {
+      users.push(user);
+    }
+    
+    if (users.length === 0) {
       return NextResponse.json(
         { message: 'Invalid credentials' },
         { status: 401 }
       )
     }
 
-    // In a real application, you would:
-    // 1. Create a session
-    // 2. Set secure HTTP-only cookies
-    // 3. Return proper tokens
+    const user = users[0];
+    
+    // In production, use proper password comparison
+    if (user.passwordHash !== password) {
+      return NextResponse.json(
+        { message: 'Invalid credentials' },
+        { status: 401 }
+      )
+    }
+
+    // Return user data without sensitive information
     return NextResponse.json({
       user: {
-        id: user.id,
-        name: user.name,
+        id: user.rowKey,
         email: user.email,
-        role: user.role
-      },
-      role: user.role
+        role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName
+      }
     })
 
   } catch (error) {
     console.error('Login error:', error)
     return NextResponse.json(
-      { message: 'Internal server error' },
+      { message: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     )
   }
