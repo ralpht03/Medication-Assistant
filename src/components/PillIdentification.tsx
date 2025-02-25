@@ -11,7 +11,7 @@ export default function PillIdentification() {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isOpenCVReady, setIsOpenCVReady] = useState(false);
-  const [isLoading, setIsLoading] = useState(false); // Changed to false by default
+  const [isLoading, setIsLoading] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -34,7 +34,15 @@ export default function PillIdentification() {
     try {
       setIsLoading(true);
       setMessage('Initializing camera...');
-      
+
+      // Check if mediaDevices is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Camera access is not supported in this browser');
+      }
+
+      // Request permission and access to camera
+      await navigator.mediaDevices.getUserMedia({ video: false }); // Quick permission check
+
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { 
           facingMode: 'environment',
@@ -43,21 +51,35 @@ export default function PillIdentification() {
         }
       });
       
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-        await new Promise<void>((resolve) => {
-          if (videoRef.current) {
-            videoRef.current.onloadedmetadata = () => resolve();
-          }
-        });
-        
-        setStream(mediaStream);
-        setIsCameraActive(true);
-        setMessage('Camera ready. Position the pill in the center and tap Capture.');
+      if (!videoRef.current) {
+        throw new Error('Video element not initialized');
       }
+
+      videoRef.current.srcObject = mediaStream;
+      
+      // Wait for video to be ready
+      await new Promise<void>((resolve) => {
+        if (videoRef.current) {
+          videoRef.current.onloadedmetadata = () => resolve();
+        }
+      });
+
+      setStream(mediaStream);
+      setIsCameraActive(true);
+      setMessage('Camera ready. Position the pill in the center and tap Capture.');
     } catch (error) {
       console.error('Camera error:', error);
-      setMessage('Error accessing camera. Please check permissions.');
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          setMessage('Camera access denied. Please enable camera permissions.');
+        } else if (error.name === 'NotFoundError') {
+          setMessage('No camera found. Please connect a camera and try again.');
+        } else {
+          setMessage(`Camera error: ${error.message}`);
+        }
+      } else {
+        setMessage('Failed to initialize camera. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -199,9 +221,9 @@ export default function PillIdentification() {
 
         {message && (
           <div className={`p-4 rounded-md ${
-            message.includes('Error')
+            message.includes('Error') || message.includes('denied') || message.includes('failed')
               ? 'bg-red-50 text-red-700'
-              : message.includes('Identified')
+              : message.includes('ready')
                 ? 'bg-green-50 text-green-700'
                 : 'bg-blue-50 text-blue-700'
           }`}>

@@ -46,8 +46,8 @@ interface Prediction {
 }
 
 // The endpoint from your Azure Custom Vision
-const PREDICTION_ENDPOINT = 'https://msusfvision-prediction.cognitiveservices.azure.com/customvision/v3.0/Prediction/16294475-275f-4f41-9acc-ae4fcb3cf10f/detect/iterations/Iteration2/image';
-const PREDICTION_KEY = '9oheRQsp16MLxurN68moQOT2IiNkoBIWNwttA2hCZWxrozPHK4p1JQQJ99BBACYeBjFXJ3w3AAAIACOG47F1';
+const PREDICTION_ENDPOINT = process.env.CUSTOM_VISION_ENDPOINT;
+const PREDICTION_KEY = process.env.CUSTOM_VISION_KEY;
 
 export async function POST(request: Request) {
   try {
@@ -57,10 +57,10 @@ export async function POST(request: Request) {
     const imageBuffer = Buffer.from(image.split(',')[1], 'base64');
 
     // Make the prediction request using fetch
-    const response = await fetch(process.env.CUSTOM_VISION_ENDPOINT, {
+    const response = await fetch(PREDICTION_ENDPOINT, {
       method: 'POST',
       headers: {
-        'Prediction-Key': process.env.CUSTOM_VISION_KEY,
+        'Prediction-Key': process.env.CUSTOM_VISION_KEY!,
         'Content-Type': 'application/octet-stream',
       },
       body: imageBuffer
