@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import { Camera } from 'lucide-react';
+import { Camera, AlertCircle } from 'lucide-react';
 import axios from 'axios';
 import cv from '@techstark/opencv-js';
 
@@ -12,6 +12,7 @@ export default function PillIdentification() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isOpenCVReady, setIsOpenCVReady] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [permissionState, setPermissionState] = useState<PermissionState | null>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -23,25 +24,49 @@ export default function PillIdentification() {
     }
   }, []);
 
-  // Cleanup on unmount
+  // Check camera permissions on mount
   useEffect(() => {
-    return () => {
-      stopCamera();
-    };
+    checkCameraPermissions();
   }, []);
+
+  const checkCameraPermissions = async () => {
+    try {
+      // Check if permissions API is supported
+      if (navigator.permissions && navigator.permissions.query) {
+        const result = await navigator.permissions.query({ name: 'camera' as PermissionName });
+        setPermissionState(result.state);
+        
+        // Listen for permission changes
+        result.addEventListener('change', () => {
+          setPermissionState(result.state);
+        });
+      }
+    } catch (error) {
+      console.log('Permissions API not supported');
+    }
+  };
+
+  const requestCameraPermission = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach(track => track.stop()); // Stop the stream immediately
+      setPermissionState('granted');
+      startCamera(); // Start the camera after permission is granted
+    } catch (error) {
+      console.error('Permission request error:', error);
+      setPermissionState('denied');
+      setMessage('Camera access denied. Please enable camera permissions in your browser settings.');
+    }
+  };
 
   const startCamera = async () => {
     try {
       setIsLoading(true);
       setMessage('Initializing camera...');
 
-      // Check if mediaDevices is supported
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Camera access is not supported in this browser');
       }
-
-      // Request permission and access to camera
-      await navigator.mediaDevices.getUserMedia({ video: false }); // Quick permission check
 
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { 
@@ -57,7 +82,6 @@ export default function PillIdentification() {
 
       videoRef.current.srcObject = mediaStream;
       
-      // Wait for video to be ready
       await new Promise<void>((resolve) => {
         if (videoRef.current) {
           videoRef.current.onloadedmetadata = () => resolve();
@@ -71,14 +95,13 @@ export default function PillIdentification() {
       console.error('Camera error:', error);
       if (error instanceof Error) {
         if (error.name === 'NotAllowedError') {
-          setMessage('Camera access denied. Please enable camera permissions.');
+          setPermissionState('denied');
+          setMessage('Camera access denied. Click "Enable Camera" to grant permission.');
         } else if (error.name === 'NotFoundError') {
           setMessage('No camera found. Please connect a camera and try again.');
         } else {
           setMessage(`Camera error: ${error.message}`);
         }
-      } else {
-        setMessage('Failed to initialize camera. Please try again.');
       }
     } finally {
       setIsLoading(false);
@@ -160,6 +183,24 @@ export default function PillIdentification() {
     <div className="bg-white p-6 rounded-lg shadow-md">
       <h2 className="text-2xl font-bold mb-4">Pill Identification</h2>
       
+      {/* Permission Status Banner */}
+      {permissionState === 'denied' && (
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+          <div className="flex items-center">
+            <AlertCircle className="h-5 w-5 text-yellow-400 mr-2" />
+            <div className="text-sm text-yellow-700">
+              <p className="font-medium">Camera access is blocked</p>
+              <p>To use pill identification, you need to enable camera access:</p>
+              <ol className="mt-2 ml-4 list-decimal">
+                <li>Click the camera icon in your browser&apos;s address bar</li>
+                <li>Select &quot;Allow&quot; for camera access</li>
+                <li>Refresh this page</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Camera Preview */}
       <div className="relative aspect-video mb-4 bg-gray-900 rounded-lg overflow-hidden">
         <video
@@ -174,7 +215,11 @@ export default function PillIdentification() {
         {!isCameraActive && !isLoading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 bg-opacity-75">
             <Camera className="w-12 h-12 text-white opacity-50 mb-2" />
-            <span className="text-white text-sm">Tap Start Camera to begin</span>
+            <span className="text-white text-sm">
+              {permissionState === 'denied' 
+                ? 'Camera access needed'
+                : 'Tap Start Camera to begin'}
+            </span>
           </div>
         )}
         
@@ -190,13 +235,14 @@ export default function PillIdentification() {
       <div className="space-y-4">
         {!isCameraActive ? (
           <button
-            onClick={startCamera}
+            onClick={permissionState === 'denied' ? requestCameraPermission : startCamera}
             disabled={isLoading}
             className={`w-full py-2 px-4 rounded-md text-white font-medium ${
               isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
             }`}
           >
-            {isLoading ? 'Starting Camera...' : 'Start Camera'}
+            {isLoading ? 'Starting Camera...' : 
+             permissionState === 'denied' ? 'Enable Camera' : 'Start Camera'}
           </button>
         ) : (
           <>
