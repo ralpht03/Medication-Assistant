@@ -3,13 +3,13 @@
 import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Bell, ChevronDown, User } from "lucide-react"
+import { Bell, ChevronDown, User, Settings, LogOut, Users } from "lucide-react"
 
-interface HeaderProps {
+interface AdminHeaderProps {
   unreadNotifications?: number
 }
 
-const Header = ({ unreadNotifications = 0 }: HeaderProps) => {
+const AdminHeader = ({ unreadNotifications = 0 }: AdminHeaderProps) => {
   const [showUserMenu, setShowUserMenu] = useState(false)
 
   return (
@@ -28,7 +28,7 @@ const Header = ({ unreadNotifications = 0 }: HeaderProps) => {
           </div>
           <div className="flex items-center">
             <Link
-              href="/patient/notifications"
+              href="/admin/alerts"
               className="relative mr-4 text-gray-500 hover:text-gray-700 focus:outline-none"
             >
               <Bell className="h-6 w-6" />
@@ -44,27 +44,37 @@ const Header = ({ unreadNotifications = 0 }: HeaderProps) => {
                 className="flex items-center text-gray-500 hover:text-gray-700 focus:outline-none"
               >
                 <User className="h-6 w-6 mr-1" />
-                <span className="mr-1">John Doe</span>
+                <span className="mr-1">Admin</span>
                 <ChevronDown className="h-4 w-4" />
               </button>
               {showUserMenu && (
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
                   <Link
-                    href="/patient/profile"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    href="/admin/profile"
+                    className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                   >
+                    <User className="h-4 w-4 mr-2" />
                     Profile
                   </Link>
                   <Link
-                    href="/patient/settings"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    href="/admin/patients"
+                    className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                   >
+                    <Users className="h-4 w-4 mr-2" />
+                    Manage Patients
+                  </Link>
+                  <Link
+                    href="/admin/settings"
+                    className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    <Settings className="h-4 w-4 mr-2" />
                     Settings
                   </Link>
                   <button
                     onClick={() => {/* Handle logout */}}
-                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                   >
+                    <LogOut className="h-4 w-4 mr-2" />
                     Logout
                   </button>
                 </div>
@@ -77,4 +87,4 @@ const Header = ({ unreadNotifications = 0 }: HeaderProps) => {
   )
 }
 
-export default Header
+export default AdminHeader

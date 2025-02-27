@@ -1,51 +1,59 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { NextRequest, NextResponse } from 'next/server';
+import { UserService } from '@/lib/azure-tables';
+import { LoginData } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, role } = await request.json()
+    const { email, password } = await request.json();
 
-    if (!email || !password || !role) {
+    if (!email || !password) {
       return NextResponse.json(
-        { message: 'Missing required fields' },
+        { message: 'Email and password are required' },
         { status: 400 }
-      )
+      );
     }
 
-    // In a real application, you would:
-    // 1. Hash the password before querying
-    // 2. Use proper password comparison
-    // 3. Implement proper session management
-    // For demo purposes, we'll just check if a user exists with the email
-    const users = await db.users.query({ email, role })
-    const user = users[0]
+    // Initialize UserService
+    const userService = new UserService();
+    
+    // Login user
+    const loginData: LoginData = {
+      email,
+      password
+    };
+    
+    const result = await userService.login(loginData);
 
-    if (!user) {
+    // Set JWT token in HTTP-only cookie
+    const response = NextResponse.json({
+      user: result.user,
+      message: 'Login successful'
+    });
+    
+    response.cookies.set({
+      name: 'auth_token',
+      value: result.token,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 60 * 60 * 24 // 24 hours
+    });
+
+    return response;
+  } catch (error: any) {
+    console.error('Login error:', error);
+    
+    // Handle specific errors
+    if (error.message === 'User not found' || error.message === 'Invalid password') {
       return NextResponse.json(
         { message: 'Invalid credentials' },
         { status: 401 }
-      )
+      );
     }
-
-    // In a real application, you would:
-    // 1. Create a session
-    // 2. Set secure HTTP-only cookies
-    // 3. Return proper tokens
-    return NextResponse.json({
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      },
-      role: user.role
-    })
-
-  } catch (error) {
-    console.error('Login error:', error)
+    
     return NextResponse.json(
       { message: 'Internal server error' },
       { status: 500 }
-    )
+    );
   }
 }

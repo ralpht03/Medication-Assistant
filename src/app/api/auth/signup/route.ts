@@ -1,67 +1,83 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { NextRequest, NextResponse } from 'next/server';
+import { UserService } from '@/lib/azure-tables';
+import { SignupData } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, email, password, role } = await request.json()
+    const body = await request.json();
+    const { firstName, lastName, email, password, role, dateOfBirth, phoneNumber, address, emergencyContact } = body;
 
-    if (!name || !email || !password || !role) {
+    // Validate required fields
+    if (!firstName || !lastName || !email || !password || !role) {
       return NextResponse.json(
         { message: 'Missing required fields' },
         { status: 400 }
-      )
-    }
-
-    // Check if user already exists
-    const existingUsers = await db.users.query({ email })
-    if (existingUsers.length > 0) {
-      return NextResponse.json(
-        { message: 'User already exists' },
-        { status: 409 }
-      )
+      );
     }
 
     // Validate role
-    const validRoles = ['patient', 'admin', 'helper']
+    const validRoles = ['patient', 'admin', 'helper'];
     if (!validRoles.includes(role)) {
       return NextResponse.json(
         { message: 'Invalid role' },
         { status: 400 }
-      )
+      );
     }
 
-    // In a real application, you would:
-    // 1. Hash the password before storing
-    // 2. Validate email format
-    // 3. Implement email verification
-    // 4. Add additional security measures
-    const user = await db.users.create({
-      name,
+    // Create signup data object
+    const signupData: SignupData = {
+      firstName,
+      lastName,
       email,
-      role: role as 'patient' | 'admin' | 'helper',
-      // In production, store hashed password
-      password: password
-    })
+      password,
+      role
+    };
 
-    // In a real application, you would:
-    // 1. Create a session
-    // 2. Set secure HTTP-only cookies
-    // 3. Return proper tokens
-    return NextResponse.json({
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      },
-      role: user.role
-    })
+    // Add optional fields if provided
+    if (dateOfBirth) signupData.dateOfBirth = dateOfBirth;
+    if (phoneNumber) signupData.phoneNumber = phoneNumber;
+    if (address) signupData.address = address;
+    if (emergencyContact) signupData.emergencyContact = emergencyContact;
 
-  } catch (error) {
-    console.error('Signup error:', error)
+    // Initialize UserService and create user
+    const userService = new UserService();
+    
+    // Ensure tables exist
+    await userService.createTables();
+    
+    // Create user
+    const result = await userService.signup(signupData);
+
+    // Set JWT token in HTTP-only cookie
+    const response = NextResponse.json({
+      user: result.user,
+      message: 'Signup successful'
+    });
+    
+    response.cookies.set({
+      name: 'auth_token',
+      value: result.token,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 60 * 60 * 24 // 24 hours
+    });
+
+    return response;
+  } catch (error: any) {
+    console.error('Signup error:', error);
+    
+    // Handle specific errors
+    if (error.message === 'User already exists') {
+      return NextResponse.json(
+        { message: 'User already exists' },
+        { status: 409 }
+      );
+    }
+    
     return NextResponse.json(
       { message: 'Internal server error' },
       { status: 500 }
-    )
+    );
   }
 }

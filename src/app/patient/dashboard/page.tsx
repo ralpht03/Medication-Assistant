@@ -94,12 +94,10 @@ export default function PatientDashboard() {
 
               {/* Medical Adherence - Spans 4 columns on large screens */}
               <div className="lg:col-span-4">
-                <div className="bg-white rounded-lg shadow-md p-6">
-                  <ProgressChart
-                    data={mockAdherenceData}
-                    period="weekly"
-                  />
-                </div>
+                <ProgressChart
+                  data={mockAdherenceData}
+                  period="weekly"
+                />
               </div>
             </div>
           </div>
