@@ -7,7 +7,6 @@ import Link from "next/link";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("patient");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -23,7 +22,7 @@ export default function LoginPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password, role }),
+        body: JSON.stringify({ email, password }),
       });
 
       const data = await response.json();
@@ -33,7 +32,7 @@ export default function LoginPage() {
       }
 
       // Role-based routing
-      switch (data.role) {
+      switch (data.user.role) {
         case "patient":
           router.push("/patient/dashboard");
           break;
@@ -103,24 +102,6 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <div>
-            <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-              Sign in as
-            </label>
-            <select
-              id="role"
-              name="role"
-              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              disabled={isLoading}
-            >
-              <option value="patient">Patient</option>
-              <option value="admin">Medicine Administrator</option>
-              <option value="helper">Patient Helper</option>
-            </select>
-          </div>
-
           {error && (
             <div className="text-red-500 text-sm text-center">
               {error}
@@ -139,8 +120,8 @@ export default function LoginPage() {
         </form>
 
         <div className="text-sm text-center">
-          <Link 
-            href="/signup" 
+          <Link
+            href="/signup"
             className="font-medium text-blue-600 hover:text-blue-500"
           >
             Don&apos;t have an account? Sign up
