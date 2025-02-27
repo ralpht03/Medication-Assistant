@@ -2,14 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Header from '@/components/Header'
 import Sidebar from '@/components/Sidebar'
-import MedicationOverview from '@/components/MedicationOverview'
+import MedicationCard from '@/components/shared/MedicationCard'
 import ProgressChart from '@/components/shared/ProgressChart'
 import { AzureTableService } from '@/lib/azure/table-service'
 import UpcomingDoses from '@/components/UpcomingDoses'
 import PillIdentification from '@/components/PillIdentification'
-import { Medications, Adherence } from '@/lib/types'
+import { Medications, Adherence, DashboardMedication } from '@/lib/types'
+import { Camera, Check, Shield } from 'lucide-react'
 
 interface AdherenceData {
   percentage: number;
@@ -26,14 +28,6 @@ interface AdherenceRecord {
   status: 'taken' | 'missed' | 'skipped'
   medicationId: string
   patientId: string
-}
-
-interface DashboardMedication extends Medications {
-  id: string;
-  time: string;
-  status: 'taken' | 'missed' | 'upcoming';
-  isOverdue: boolean;
-  isCurrent: boolean;
 }
 
 // Mock data
@@ -90,6 +84,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const [isNavigating, setIsNavigating] = useState(false)
 
   const fetchDashboardData = async () => {
     try {
@@ -171,6 +166,12 @@ export default function DashboardPage() {
     }
   }
 
+  // Add navigation handler
+  const handleCameraClick = () => {
+    setIsNavigating(true);
+    router.push('/patient/camera');
+  };
+
   if (loading) return (
     <div className="flex items-center justify-center min-h-screen">
       <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -184,58 +185,100 @@ export default function DashboardPage() {
         <Sidebar />
         <main className="flex-1 p-8 ml-64">
           <div className="max-w-7xl mx-auto">
-            <h1 className="text-3xl font-bold mb-8">Patient Dashboard</h1>
+            <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
             
+            {/* Progress Chart Section */}
+            <div className="mb-8">
+              <ProgressChart 
+                data={adherenceData ? {
+                  percentage: Number(adherenceData.adherencePercentage),
+                  streak: 0, // Add calculation if needed
+                  total: 0,  // Add calculation if needed
+                  taken: 0,  // Add calculation if needed
+                  missed: 0  // Add calculation if needed
+                } : undefined}
+                loading={loading}
+              />
+            </div>
+
             {/* Pill Identification Section */}
             <div className="mb-8">
-              <PillIdentification />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-              {/* Medication Overview with Empty State */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-xl font-semibold mb-4">Medication Overview</h2>
-                {medications.length > 0 ? (
-                  <MedicationOverview medications={medications} />
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <p>No medications scheduled</p>
-                    <p className="text-sm mt-2">Medications will appear here once prescribed</p>
+              <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+                <div className="p-6 border-b border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-800">Pill Identification</h2>
+                      <p className="text-gray-600 mt-1">Verify your medications using AI-powered recognition</p>
+                    </div>
+                    <div className="hidden sm:block">
+                      <Camera className="w-8 h-8 text-blue-500" />
+                    </div>
                   </div>
-                )}
-              </div>
-
-              {/* Progress Chart with Empty State */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-xl font-semibold mb-4">Adherence Progress</h2>
-                {adherenceData ? (
-                  <ProgressChart 
-                    percentage={Number(adherenceData.adherencePercentage) || 0}
-                    history={typeof adherenceData.dailyAdherence === 'string' ? JSON.parse(adherenceData.dailyAdherence) : []}
-                  />
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <p>No adherence data available</p>
-                    <p className="text-sm mt-2">Data will appear as you take medications</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Upcoming Doses with Empty State */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold mb-4">Upcoming Doses</h2>
-              {medications.length > 0 ? (
-                <UpcomingDoses 
-                  medications={medications.filter(med => !med.isOverdue)}
-                  onMedicationAction={handleMedicationAction}
-                />
-              ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <p>No upcoming doses</p>
-                  <p className="text-sm mt-2">Your scheduled medications will appear here</p>
                 </div>
-              )}
+                
+                <div className="p-6 bg-gradient-to-br from-blue-50 to-white">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+                    <div className="flex-1 w-full">
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                            <Camera className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <p className="text-sm text-gray-600">Take a clear photo of your medication</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                            <Check className="w-4 h-4 text-green-600" />
+                          </div>
+                          <p className="text-sm text-gray-600">Get instant verification results</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="w-full sm:w-auto">
+                      <button
+                        onClick={handleCameraClick}
+                        disabled={isNavigating}
+                        className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-lg transition-all transform hover:scale-105 ${
+                          isNavigating 
+                            ? 'bg-gray-400 cursor-not-allowed' 
+                            : 'bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl'
+                        } text-white font-medium`}
+                      >
+                        {isNavigating ? (
+                          <>
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                            <span>Opening Camera...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Camera className="w-5 h-5" />
+                            <span>Open Camera</span>
+                          </>
+                        )}
+                      </button>
+                      
+                      <p className="text-xs text-gray-500 mt-2 text-center sm:text-left">
+                        Camera access required for identification
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Medications Section */}
+            <div className="space-y-6">
+              <h2 className="text-2xl font-semibold">Today's Medications</h2>
+              {medications.map((medication) => (
+                <MedicationCard
+                  key={medication.id}
+                  medication={medication}
+                  showActions={true}
+                  onTake={() => handleMedicationAction(medication.id, 'take')}
+                  onSnooze={() => handleMedicationAction(medication.id, 'snooze')}
+                />
+              ))}
             </div>
           </div>
         </main>

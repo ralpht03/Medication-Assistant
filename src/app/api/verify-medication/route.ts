@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     const imageBuffer = Buffer.from(image.split(',')[1], 'base64');
 
     // Make the prediction request using fetch
-    const response = await fetch(PREDICTION_ENDPOINT, {
+    const response = await fetch(process.env.CUSTOM_VISION_ENDPOINT!, {
       method: 'POST',
       headers: {
         'Prediction-Key': process.env.CUSTOM_VISION_KEY!,
@@ -80,12 +80,25 @@ export async function POST(request: Request) {
 
     // Process predictions
     const predictions = results.predictions || [];
-    const topPrediction = predictions[0] || { probability: 0, tagName: 'unknown' };
+    const topPrediction = predictions[0];
+
+    // If no predictions were found
+    if (!topPrediction) {
+      return NextResponse.json({
+        verified: false,
+        pill_name: 'unknown',
+        confidence: 0,
+        message: 'No pill detected in image. Please ensure the pill is centered and well-lit.'
+      }, { status: 200 }); // Return 200 as this is a valid response
+    }
 
     const result = {
       verified: topPrediction.probability > 0.75,
       pill_name: topPrediction.tagName,
-      confidence: topPrediction.probability
+      confidence: topPrediction.probability,
+      message: topPrediction.probability > 0.75 
+        ? `Successfully identified as ${topPrediction.tagName}`
+        : 'Low confidence detection. Please try again with better lighting'
     };
 
     // Log verification attempt
@@ -114,9 +127,12 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { 
         error: error instanceof Error ? error.message : "Failed to verify medication",
-        details: process.env.NODE_ENV === 'development' ? error : undefined
+        message: "Unable to process image. Please try again.",
+        verified: false,
+        pill_name: 'unknown',
+        confidence: 0
       },
-      { status: 500 }
+      { status: 200 } // Return 200 even for processing errors
     );
   }
 }

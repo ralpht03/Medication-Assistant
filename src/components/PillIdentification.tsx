@@ -8,7 +8,6 @@ import cv from '@techstark/opencv-js';
 export default function PillIdentification() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [message, setMessage] = useState('');
-  const [stream, setStream] = useState<MediaStream | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isOpenCVReady, setIsOpenCVReady] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -88,7 +87,6 @@ export default function PillIdentification() {
         }
       });
 
-      setStream(mediaStream);
       setIsCameraActive(true);
       setMessage('Camera ready. Position the pill in the center and tap Capture.');
     } catch (error) {
@@ -109,21 +107,28 @@ export default function PillIdentification() {
   };
 
   const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-      setIsCameraActive(false);
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
-      setMessage('');
+    if (videoRef.current && videoRef.current.srcObject) {
+      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+      tracks.forEach(track => track.stop());
+      videoRef.current.srcObject = null;
     }
+    setIsCameraActive(false);
+    setMessage('');
   };
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (videoRef.current && videoRef.current.srcObject) {
+        const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+        tracks.forEach(track => track.stop());
+        videoRef.current.srcObject = null;
+      }
+    };
+  }, []);
+
   const captureAndIdentify = async () => {
-    if (!isCameraActive) {
-      return;
-    }
+    if (!isCameraActive) return;
 
     setIsProcessing(true);
     setMessage("Processing image...");
@@ -146,11 +151,17 @@ export default function PillIdentification() {
         patientId: user.id || user.RowKey
       });
       
-      const { pill_name, confidence } = response.data;
+      const { pill_name, confidence, message } = response.data;
+      
+      if (!response.data.verified) {
+        setMessage(message || "No pill detected. Please try again.");
+        return;
+      }
+
       setMessage(`Identified as: ${pill_name} (Confidence: ${(confidence * 100).toFixed(2)}%)`);
     } catch (error) {
       console.error("Error:", error);
-      setMessage(error instanceof Error ? error.message : "Error identifying pill. Please try again.");
+      setMessage("Unable to process image. Please ensure good lighting and try again.");
     } finally {
       setIsProcessing(false);
     }

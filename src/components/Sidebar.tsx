@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
@@ -14,9 +15,18 @@ import {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const userStr = localStorage.getItem('user');
-  const user = userStr ? JSON.parse(userStr) : null;
-  const role = user?.role || 'patient';
+  const [user, setUser] = useState<any>(null);
+  const [role, setRole] = useState<string>('patient');
+
+  useEffect(() => {
+    // Access localStorage after component mounts
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const userData = JSON.parse(userStr);
+      setUser(userData);
+      setRole(userData?.role || 'patient');
+    }
+  }, []);
 
   const menuItems = {
     patient: [

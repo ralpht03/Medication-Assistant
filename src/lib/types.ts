@@ -93,6 +93,13 @@ export interface VerificationLogs {
   helperConfirmation: boolean
 }
 
+export interface DashboardMedication extends Medications {
+  id: string;
+  time: string;
+  status: 'taken' | 'missed' | 'upcoming';
+  isOverdue: boolean;
+  isCurrent: boolean;
+}
 
 export interface DatabaseSchema {
   Adherence: Adherence[]
