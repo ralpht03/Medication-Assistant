@@ -1,17 +1,26 @@
 import { NextResponse } from 'next/server'
-import { TableClient } from "@azure/data-tables"
+import { AzureTableService } from '@/lib/azure/table-service'
 
-if (!process.env.AZURE_STORAGE_CONNECTION_STRING) {
-  throw new Error('AZURE_STORAGE_CONNECTION_STRING is not defined in environment variables');
+// Initialize the users table service with error handling
+let usersTable: AzureTableService;
+try {
+  usersTable = new AzureTableService('Users');
+} catch (error) {
+  console.error('Failed to initialize Users table service:', error);
+  // We'll handle this in the API route
 }
-
-const tableClient = TableClient.fromConnectionString(
-  process.env.AZURE_STORAGE_CONNECTION_STRING,
-  "Users"
-);
 
 export async function POST(request: Request) {
   try {
+    // Check if the users table was initialized properly
+    if (!usersTable) {
+      console.error('Users table service is not initialized');
+      return NextResponse.json(
+        { message: 'Database connection error. Please check server configuration.' },
+        { status: 500 }
+      );
+    }
+
     const { email, password } = await request.json()
 
     if (!email || !password) {
@@ -21,46 +30,59 @@ export async function POST(request: Request) {
       );
     }
 
-    // Query user by email
-    const users = [];
-    const query = `email eq '${email}'`;
-    
-    for await (const user of tableClient.listEntities({
-      queryOptions: { filter: query }
-    })) {
-      users.push(user);
-    }
-    
-    if (users.length === 0) {
+    try {
+      // Query user by email
+      const users = await usersTable.queryEntities(`email eq '${email}'`);
+      
+      if (users.length === 0) {
+        return NextResponse.json(
+          { message: 'Invalid credentials' },
+          { status: 401 }
+        );
+      }
+
+      const user = users[0];
+      
+      // In production, use proper password comparison
+      if (user.passwordHash !== password) {
+        return NextResponse.json(
+          { message: 'Invalid credentials' },
+          { status: 401 }
+        )
+      }
+
+      // Return user data without sensitive information
+      return NextResponse.json({
+        user: {
+          id: user.rowKey,
+          email: user.email,
+          role: user.role,
+          firstName: user.firstName,
+          lastName: user.lastName
+        }
+      });
+    } catch (queryError) {
+      console.error('Error querying user:', queryError);
       return NextResponse.json(
-        { message: 'Invalid credentials' },
-        { status: 401 }
+        { message: 'Error during login. Please try again later.' },
+        { status: 500 }
       );
     }
-
-    const user = users[0];
-    
-    // In production, use proper password comparison
-    if (user.passwordHash !== password) {
-      return NextResponse.json(
-        { message: 'Invalid credentials' },
-        { status: 401 }
-      )
-    }
-
-    // Return user data without sensitive information
-    return NextResponse.json({
-      user: {
-        id: user.rowKey,
-        email: user.email,
-        role: user.role,
-        firstName: user.firstName,
-        lastName: user.lastName
-      }
-    })
-
   } catch (error) {
-    console.error('Login error:', error)
+    console.error('Login error:', error);
+    
+    // Handle Azure-related errors
+    if (error instanceof Error && error.message && (
+        error.message.includes('Azure') ||
+        error.message.includes('AZURE_STORAGE') ||
+        error.message.includes('environment variable')
+      )) {
+      return NextResponse.json(
+        { message: 'Database configuration error. Please contact support.' },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(
       { message: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }

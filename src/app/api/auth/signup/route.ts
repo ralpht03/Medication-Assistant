@@ -1,10 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { AzureTableService } from '@/lib/azure/table-service'
 
-const usersTable = new AzureTableService('Users')
+// Initialize the users table service with error handling
+let usersTable: AzureTableService;
+try {
+  usersTable = new AzureTableService('Users');
+} catch (error) {
+  console.error('Failed to initialize Users table service:', error);
+  // We'll handle this in the API route
+}
 
 export async function POST(request: NextRequest) {
   try {
+    // Check if the users table was initialized properly
+    if (!usersTable) {
+      console.error('Users table service is not initialized');
+      return NextResponse.json(
+        { message: 'Database connection error. Please check server configuration.' },
+        { status: 500 }
+      );
+    }
+
     const body = await request.json();
     const { firstName, lastName, email, password, role, dateOfBirth, phoneNumber, address, emergencyContact } = body;
 
@@ -17,12 +33,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user already exists
-    const existingUsers = await usersTable.queryEntities(`email eq '${email}'`)
-    if (existingUsers.length > 0) {
+    try {
+      const existingUsers = await usersTable.queryEntities(`email eq '${email}'`)
+      if (existingUsers.length > 0) {
+        return NextResponse.json(
+          { message: 'User already exists' },
+          { status: 409 }
+        )
+      }
+    } catch (queryError) {
+      console.error('Error querying existing users:', queryError);
       return NextResponse.json(
-        { message: 'User already exists' },
-        { status: 409 }
-      )
+        { message: 'Error checking existing users. Please try again later.' },
+        { status: 500 }
+      );
     }
 
     // Validate role
@@ -53,7 +77,15 @@ export async function POST(request: NextRequest) {
     if (address) user.address = address;
     if (emergencyContact) user.emergencyContact = emergencyContact;
 
-    await usersTable.createEntity(user)
+    try {
+      await usersTable.createEntity(user)
+    } catch (createError) {
+      console.error('Error creating user entity:', createError);
+      return NextResponse.json(
+        { message: 'Error creating user account. Please try again later.' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       user: {
@@ -72,6 +104,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { message: 'User already exists' },
         { status: 409 }
+      );
+    }
+    
+    // Handle Azure-related errors
+    if (error.message && (
+        error.message.includes('Azure') ||
+        error.message.includes('AZURE_STORAGE') ||
+        error.message.includes('environment variable')
+      )) {
+      return NextResponse.json(
+        { message: 'Database configuration error. Please contact support.' },
+        { status: 500 }
       );
     }
     

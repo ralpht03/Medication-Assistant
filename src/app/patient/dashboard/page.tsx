@@ -109,7 +109,8 @@ export default function DashboardPage() {
       // Fetch medications with patientId
       const medResponse = await fetch(`/api/medications?patientId=${patientId}`);
       if (medResponse.ok) {
-        const medicationsData = await medResponse.json();
+        const responseData = await medResponse.json();
+        const medicationsData = responseData.medications || [];
         const now = new Date();
         const processedMedications = medicationsData.map((med: Medications & { time: string; status: string }) => ({
           ...med,
