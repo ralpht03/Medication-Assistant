@@ -29,8 +29,20 @@ export default function LoginPage() {
       }
 
       const data = await response.json();
-      localStorage.setItem("user", JSON.stringify(data.user));
-      router.push("/patient/dashboard");
+      // Role-based routing
+      switch (data.user.role) {
+        case "patient":
+          router.push("/patient/dashboard");
+          break;
+        case "admin":
+          router.push("/admin/dashboard");
+          break;
+        case "helper":
+          router.push("/helper/dashboard");
+          break;
+        default:
+          router.push("/patient/dashboard");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     }
@@ -90,6 +102,12 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {error && (
+            <div className="text-red-500 text-sm text-center">
+              {error}
+            </div>
+          )}
+
           <div>
             <button
               type="submit"
@@ -100,7 +118,10 @@ export default function LoginPage() {
           </div>
 
           <div className="text-sm text-center">
-            <Link href="/signup" className="font-medium text-blue-600 hover:text-blue-500">
+            <Link
+              href="/signup"
+              className="font-medium text-blue-600 hover:text-blue-500"
+            >
               Don&apos;t have an account? Sign up
             </Link>
           </div>

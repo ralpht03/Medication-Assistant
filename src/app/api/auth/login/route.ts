@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { message: 'Email and password are required' },
         { status: 400 }
-      )
+      );
     }
 
     // Query user by email
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { message: 'Invalid credentials' },
         { status: 401 }
-      )
+      );
     }
 
     const user = users[0];
@@ -64,6 +64,6 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { message: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
-    )
+    );
   }
 }

@@ -34,6 +34,7 @@ Welcome to the Medication Assistant documentation! This guide will help you unde
 - [System Architecture](./architecture/001-system-architecture.md)
 - [Authentication Architecture](./architecture/002-authentication.md)
 - [Database Strategy](./architecture/003-database-strategy.md)
+- [Azure Tables Structure](./azure-tables-structure.md)
 
 ## Quick Start
 

@@ -3,14 +3,16 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  HomeIcon, 
-  PlusCircleIcon, 
-  CalendarIcon, 
-  SettingsIcon, 
-  LogOutIcon,
-  PillIcon,
-  BellIcon
+import {
+  Home,
+  PlusCircle,
+  Calendar,
+  Settings,
+  LogOut,
+  Info,
+  Bell,
+  HelpCircle,
+  Bot
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -30,51 +32,55 @@ export default function Sidebar() {
 
   const menuItems = {
     patient: [
-      { name: 'Dashboard', href: '/patient/dashboard', icon: HomeIcon },
-      { name: 'Medications', href: '/patient/medications', icon: PillIcon },
-      { name: 'Schedule', href: '/patient/schedule', icon: CalendarIcon },
-      { name: 'Notifications', href: '/patient/notifications', icon: BellIcon },
-      { name: 'Settings', href: '/patient/settings', icon: SettingsIcon },
+      { name: 'Dashboard', href: '/patient/dashboard', icon: Home },
+      { name: 'Medications', href: '/patient/medications', icon: Info },
+      { name: 'Schedule', href: '/patient/schedule', icon: Calendar },
+      { name: 'Notifications', href: '/patient/notifications', icon: Bell },
+      { name: 'AI Assistant', href: '/patient/ai-assistant', icon: Bot },
+      { name: 'Help & Support', href: '/patient/help', icon: HelpCircle },
+      { name: 'Settings', href: '/patient/settings', icon: Settings },
     ],
     helper: [
-      { name: 'Dashboard', href: '/helper/dashboard', icon: HomeIcon },
-      { name: 'Patients', href: '/helper/patients', icon: PlusCircleIcon },
-      { name: 'Settings', href: '/helper/settings', icon: SettingsIcon },
+      { name: 'Dashboard', href: '/helper/dashboard', icon: Home },
+      { name: 'Patients', href: '/helper/patients', icon: PlusCircle },
+      { name: 'Settings', href: '/helper/settings', icon: Settings },
     ],
     admin: [
-      { name: 'Dashboard', href: '/admin/dashboard', icon: HomeIcon },
-      { name: 'Users', href: '/admin/users', icon: PlusCircleIcon },
-      { name: 'Settings', href: '/admin/settings', icon: SettingsIcon },
+      { name: 'Dashboard', href: '/admin/dashboard', icon: Home },
+      { name: 'Users', href: '/admin/users', icon: PlusCircle },
+      { name: 'Settings', href: '/admin/settings', icon: Settings },
     ],
   };
 
   const currentMenuItems = menuItems[role as keyof typeof menuItems] || menuItems.patient;
 
   return (
-    <div className="w-64 min-h-screen bg-white shadow-lg fixed left-0 top-0 z-10">
+    <aside className="fixed h-[calc(100vh-4rem)] w-64 bg-white shadow-md overflow-y-auto">
       <div className="flex flex-col h-full">
         <div className="p-4">
           <h2 className="text-xl font-bold text-gray-800">MedTracker</h2>
         </div>
         
-        <nav className="flex-1 px-2 py-4">
-          {currentMenuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href;
-            
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={`flex items-center px-4 py-2 mt-2 text-gray-600 rounded-lg hover:bg-gray-100 ${
-                  isActive ? 'bg-blue-100 text-blue-700' : ''
-                }`}
-              >
-                <Icon className="w-5 h-5" />
-                <span className="mx-4">{item.name}</span>
-              </Link>
-            );
-          })}
+        <nav className="flex-1 p-4">
+          <div className="space-y-1">
+            {currentMenuItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href;
+              
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={`flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group ${
+                    isActive ? 'bg-blue-100 text-blue-700' : ''
+                  }`}
+                >
+                  <Icon className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
+                  <span className="ml-3 text-sm font-medium group-hover:text-blue-600">{item.name}</span>
+                </Link>
+              );
+            })}
+          </div>
         </nav>
 
         <div className="p-4 border-t border-gray-200">
@@ -83,13 +89,13 @@ export default function Sidebar() {
               localStorage.removeItem('user');
               window.location.href = '/login';
             }}
-            className="flex items-center px-4 py-2 text-gray-600 rounded-lg hover:bg-gray-100 w-full"
+            className="flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group w-full"
           >
-            <LogOutIcon className="w-5 h-5" />
-            <span className="mx-4">Logout</span>
+            <LogOut className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
+            <span className="ml-3 text-sm font-medium group-hover:text-blue-600">Logout</span>
           </button>
         </div>
       </div>
-    </div>
+    </aside>
   );
 }

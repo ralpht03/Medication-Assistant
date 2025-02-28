@@ -5,9 +5,11 @@ const usersTable = new AzureTableService('Users')
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, email, password, role } = await request.json()
+    const body = await request.json();
+    const { firstName, lastName, email, password, role, dateOfBirth, phoneNumber, address, emergencyContact } = body;
 
-    if (!name || !email || !password || !role) {
+    // Validate required fields
+    if (!firstName || !lastName || !email || !password || !role) {
       return NextResponse.json(
         { message: 'Missing required fields' },
         { status: 400 }
@@ -24,26 +26,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate role
-    const validRoles = ['patient', 'admin', 'helper']
+    const validRoles = ['patient', 'admin', 'helper'];
     if (!validRoles.includes(role)) {
       return NextResponse.json(
         { message: 'Invalid role' },
         { status: 400 }
-      )
+      );
     }
 
     // Create user in Azure Table Storage
-    const user = {
+    const user: any = {
       PartitionKey: role,
       RowKey: crypto.randomUUID(),
       email,
       passwordHash: password, // In production, use proper password hashing
       role,
-      firstName: name.split(' ')[0],
-      lastName: name.split(' ')[1] || '',
+      firstName,
+      lastName,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }
+
+    // Add optional fields if provided
+    if (dateOfBirth) user.dateOfBirth = dateOfBirth;
+    if (phoneNumber) user.phoneNumber = phoneNumber;
+    if (address) user.address = address;
+    if (emergencyContact) user.emergencyContact = emergencyContact;
 
     await usersTable.createEntity(user)
 
@@ -56,12 +64,20 @@ export async function POST(request: NextRequest) {
         lastName: user.lastName
       }
     })
-
-  } catch (error) {
-    console.error('Signup error:', error)
+  } catch (error: any) {
+    console.error('Signup error:', error);
+    
+    // Handle specific errors
+    if (error.message === 'User already exists') {
+      return NextResponse.json(
+        { message: 'User already exists' },
+        { status: 409 }
+      );
+    }
+    
     return NextResponse.json(
       { message: 'Internal server error' },
       { status: 500 }
-    )
+    );
   }
 }

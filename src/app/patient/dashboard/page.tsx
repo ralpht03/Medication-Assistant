@@ -267,6 +267,22 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {/* Medical Adherence - Spans 4 columns on large screens */}
+            <div className="mb-8">
+              <div className="lg:col-span-4">
+                <ProgressChart
+                  data={{
+                    percentage: mockAdherenceData.percentage,
+                    streak: mockAdherenceData.streak,
+                    total: mockAdherenceData.history.reduce((sum, day) => sum + day.total, 0),
+                    taken: mockAdherenceData.history.reduce((sum, day) => sum + day.taken, 0),
+                    missed: mockAdherenceData.history.reduce((sum, day) => sum + (day.total - day.taken), 0)
+                  }}
+                  loading={false}
+                />
+              </div>
+            </div>
+
             {/* Medications Section */}
             <div className="space-y-6">
               <h2 className="text-2xl font-semibold">Today's Medications</h2>
