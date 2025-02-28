@@ -51,14 +51,18 @@ export async function POST(request: Request) {
         )
       }
 
+      // Log the user object to debug
+      console.log('User found:', user);
+      
       // Return user data without sensitive information
+      // Handle different possible casings of properties
       return NextResponse.json({
         user: {
-          id: user.rowKey,
-          email: user.email,
-          role: user.role,
-          firstName: user.firstName,
-          lastName: user.lastName
+          id: user.rowKey || user.RowKey,
+          email: user.email || user.Email,
+          role: user.role || user.Role || user.partitionKey || user.PartitionKey,
+          firstName: user.firstName || user.FirstName,
+          lastName: user.lastName || user.LastName
         }
       });
     } catch (queryError) {

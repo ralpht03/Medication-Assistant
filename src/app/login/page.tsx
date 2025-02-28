@@ -13,6 +13,7 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    console.log('Login attempt with:', { email, password });
 
     try {
       const response = await fetch("/api/auth/login", {
@@ -23,25 +24,50 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
+      // Parse the JSON response once
+      const data = await response.json();
+
       if (!response.ok) {
-        const data = await response.json();
         throw new Error(data.message || "Login failed");
       }
 
-      const data = await response.json();
+      // Store user data in localStorage for persistence
+      localStorage.setItem('user', JSON.stringify(data.user));
+      
+      console.log('Login successful:', data.user);
       // Role-based routing
+      console.log('Redirecting based on role:', data.user.role);
+      
+      let targetPath = "/patient/dashboard";
       switch (data.user.role) {
         case "patient":
-          router.push("/patient/dashboard");
+          targetPath = "/patient/dashboard";
           break;
         case "admin":
-          router.push("/admin/dashboard");
+          targetPath = "/admin/dashboard";
           break;
         case "helper":
-          router.push("/helper/dashboard");
+          targetPath = "/helper/dashboard";
           break;
         default:
-          router.push("/patient/dashboard");
+          targetPath = "/patient/dashboard";
+      }
+      
+      console.log('Navigating to:', targetPath);
+      
+      // Try a more forceful navigation approach
+      try {
+        router.push(targetPath);
+        
+        // If router.push doesn't seem to work, try window.location as a fallback
+        setTimeout(() => {
+          console.log('Fallback navigation with window.location');
+          window.location.href = targetPath;
+        }, 500);
+      } catch (navError) {
+        console.error('Navigation error:', navError);
+        // Direct browser navigation as last resort
+        window.location.href = targetPath;
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");

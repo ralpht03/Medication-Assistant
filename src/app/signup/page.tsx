@@ -96,19 +96,44 @@ export default function SignUpPage() {
         throw new Error(data.message || "Sign up failed")
       }
 
+      // Store user data in localStorage for persistence
+      localStorage.setItem('user', JSON.stringify(data.user));
+      
+      console.log('Signup successful:', data.user);
+
       // Redirect based on role from the user object
+      console.log('Redirecting based on role:', data.user.role);
+      
+      let targetPath = "/patient/dashboard";
       switch (data.user.role) {
         case "patient":
-          router.push("/patient/dashboard")
+          targetPath = "/patient/dashboard"
           break
         case "helper":
-          router.push("/helper/dashboard")
+          targetPath = "/helper/dashboard"
           break
         case "admin":
-          router.push("/admin/dashboard")
+          targetPath = "/admin/dashboard"
           break
         default:
-          router.push("/dashboard")
+          targetPath = "/dashboard"
+      }
+      
+      console.log('Navigating to:', targetPath);
+      
+      // Try a more forceful navigation approach
+      try {
+        router.push(targetPath);
+        
+        // If router.push doesn't seem to work, try window.location as a fallback
+        setTimeout(() => {
+          console.log('Fallback navigation with window.location');
+          window.location.href = targetPath;
+        }, 500);
+      } catch (navError) {
+        console.error('Navigation error:', navError);
+        // Direct browser navigation as last resort
+        window.location.href = targetPath;
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred")
