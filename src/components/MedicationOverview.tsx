@@ -1,19 +1,17 @@
 import { useState } from 'react'
 import { Filter, ChevronDown } from 'lucide-react'
 import MedicationCard from './shared/MedicationCard'
+import { Medications } from '@/lib/types'
 
-interface Medication {
-  id: string | number
-  name: string
-  dosage: string
-  time: string
-  status: 'taken' | 'missed' | 'upcoming'
-  instructions?: string
+type MedicationWithStatus = Medications & {
+  id: string;
+  time: string;
+  status: 'taken' | 'missed' | 'upcoming';
 }
 
 interface MedicationOverviewProps {
-  medications: Medication[]
-  onMedicationAction?: (medicationId: string | number, action: 'take' | 'snooze') => void
+  medications: MedicationWithStatus[];
+  onMedicationAction?: (medicationId: string, action: 'take' | 'snooze') => void;
 }
 
 const MedicationOverview = ({ medications, onMedicationAction }: MedicationOverviewProps) => {
@@ -91,8 +89,8 @@ const MedicationOverview = ({ medications, onMedicationAction }: MedicationOverv
             key={medication.id}
             medication={medication}
             showActions={medication.status === 'upcoming'}
-            onTake={() => onMedicationAction?.(medication.id, 'take')}
-            onSnooze={() => onMedicationAction?.(medication.id, 'snooze')}
+            onTake={() => onMedicationAction?.(String(medication.id), 'take')}
+            onSnooze={() => onMedicationAction?.(String(medication.id), 'snooze')}
           />
         ))}
       </div>

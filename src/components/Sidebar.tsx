@@ -1,92 +1,101 @@
-import Link from "next/link"
-import { Home, Calendar, Bell, Info, HelpCircle, Bot } from "lucide-react"
+"use client";
 
-const Sidebar = () => {
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import {
+  Home,
+  PlusCircle,
+  Calendar,
+  Settings,
+  LogOut,
+  Info,
+  Bell,
+  HelpCircle,
+  Bot
+} from 'lucide-react';
+
+export default function Sidebar() {
+  const pathname = usePathname();
+  const [user, setUser] = useState<any>(null);
+  const [role, setRole] = useState<string>('patient');
+
+  useEffect(() => {
+    // Access localStorage after component mounts
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const userData = JSON.parse(userStr);
+      setUser(userData);
+      setRole(userData?.role || 'patient');
+    }
+  }, []);
+
+  const menuItems = {
+    patient: [
+      { name: 'Dashboard', href: '/patient/dashboard', icon: Home },
+      { name: 'Medications', href: '/patient/medications', icon: Info },
+      { name: 'Schedule', href: '/patient/schedule', icon: Calendar },
+      { name: 'Notifications', href: '/patient/notifications', icon: Bell },
+      { name: 'AI Assistant', href: '/patient/ai-assistant', icon: Bot },
+      { name: 'Help & Support', href: '/patient/help', icon: HelpCircle },
+      { name: 'Settings', href: '/patient/settings', icon: Settings },
+    ],
+    helper: [
+      { name: 'Dashboard', href: '/helper/dashboard', icon: Home },
+      { name: 'Patients', href: '/helper/patients', icon: PlusCircle },
+      { name: 'Settings', href: '/helper/settings', icon: Settings },
+    ],
+    admin: [
+      { name: 'Dashboard', href: '/admin/dashboard', icon: Home },
+      { name: 'Users', href: '/admin/users', icon: PlusCircle },
+      { name: 'Settings', href: '/admin/settings', icon: Settings },
+    ],
+  };
+
+  const currentMenuItems = menuItems[role as keyof typeof menuItems] || menuItems.patient;
+
   return (
     <aside className="fixed h-[calc(100vh-4rem)] w-64 bg-white shadow-md overflow-y-auto">
-      <nav className="p-4">
-        <div className="space-y-1">
-          {/* Dashboard - Primary navigation */}
-          <Link
-            href="/patient/dashboard"
-            className="flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group"
-          >
-            <Home className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
-            <span className="ml-3 text-sm font-medium group-hover:text-blue-600">Dashboard</span>
-          </Link>
-
-          {/* Schedule with History - Prominent placement */}
-          <Link
-            href="/patient/schedule"
-            className="flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group"
-          >
-            <Calendar className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
-            <span className="ml-3 text-sm font-medium group-hover:text-blue-600">
-              Schedule & History
-            </span>
-          </Link>
-
-          {/* Medications */}
-          <Link
-            href="/patient/medications"
-            className="flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group"
-          >
-            <Info className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
-            <span className="ml-3 text-sm font-medium group-hover:text-blue-600">Medications</span>
-          </Link>
-
-          {/* Notifications */}
-          <Link
-            href="/patient/notifications"
-            className="flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group"
-          >
-            <Bell className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
-            <span className="ml-3 text-sm font-medium group-hover:text-blue-600">Notifications</span>
-          </Link>
-
-          {/* AI Assistant */}
-          <Link
-            href="/patient/ai-assistant"
-            className="flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group"
-          >
-            <Bot className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
-            <span className="ml-3 text-sm font-medium group-hover:text-blue-600">AI Assistant</span>
-          </Link>
-
-          {/* Help & Support */}
-          <Link
-            href="/patient/help"
-            className="flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group"
-          >
-            <HelpCircle className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
-            <span className="ml-3 text-sm font-medium group-hover:text-blue-600">Help & Support</span>
-          </Link>
+      <div className="flex flex-col h-full">
+        <div className="p-4">
+          <h2 className="text-xl font-bold text-gray-800">MedTracker</h2>
         </div>
+        
+        <nav className="flex-1 p-4">
+          <div className="space-y-1">
+            {currentMenuItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href;
+              
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={`flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group ${
+                    isActive ? 'bg-blue-100 text-blue-700' : ''
+                  }`}
+                >
+                  <Icon className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
+                  <span className="ml-3 text-sm font-medium group-hover:text-blue-600">{item.name}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
 
-        <div className="mt-8 pt-8 border-t border-gray-200">
-          <div className="px-4 py-2">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Quick Links
-            </h3>
-          </div>
-          <div className="mt-2 space-y-1">
-            <Link
-              href="/patient/settings"
-              className="flex items-center px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
-            >
-              Settings
-            </Link>
-            <Link
-              href="/patient/profile"
-              className="flex items-center px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
-            >
-              Profile
-            </Link>
-          </div>
+        <div className="p-4 border-t border-gray-200">
+          <button
+            onClick={() => {
+              localStorage.removeItem('user');
+              window.location.href = '/login';
+            }}
+            className="flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group w-full"
+          >
+            <LogOut className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
+            <span className="ml-3 text-sm font-medium group-hover:text-blue-600">Logout</span>
+          </button>
         </div>
-      </nav>
+      </div>
     </aside>
-  )
+  );
 }
-
-export default Sidebar

@@ -1,13 +1,11 @@
 import { Clock } from 'lucide-react'
 import MedicationCard from './shared/MedicationCard'
+import { Medications } from '@/lib/types'
+import { MedicationStatus } from './shared/MedicationCard'  // Export this type from MedicationCard
 
-interface Medication {
-  id: string | number
-  name: string
-  dosage: string
-  time: string
-  status: 'taken' | 'missed' | 'upcoming'
-  instructions?: string
+interface Medication extends Medications {
+  time: string;
+  status: MedicationStatus;
 }
 
 interface TimeSlot {
@@ -17,7 +15,7 @@ interface TimeSlot {
 
 interface UpcomingDosesProps {
   medications: Medication[]
-  onMedicationAction?: (medicationId: string | number, action: 'take' | 'snooze') => void
+  onMedicationAction?: (medicationId: string, action: 'take' | 'snooze') => void
 }
 
 const UpcomingDoses = ({ medications, onMedicationAction }: UpcomingDosesProps) => {
@@ -68,11 +66,11 @@ const UpcomingDoses = ({ medications, onMedicationAction }: UpcomingDosesProps) 
             <div className="ml-12 space-y-4">
               {slot.medications.map((medication) => (
                 <MedicationCard
-                  key={medication.id}
+                  key={medication.RowKey}
                   medication={medication}
                   showActions
-                  onTake={() => onMedicationAction?.(medication.id, 'take')}
-                  onSnooze={() => onMedicationAction?.(medication.id, 'snooze')}
+                  onTake={() => onMedicationAction?.(medication.RowKey, 'take')}
+                  onSnooze={() => onMedicationAction?.(medication.RowKey, 'snooze')}
                 />
               ))}
             </div>

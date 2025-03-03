@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { MedicationService } from '@/lib/azure-tables';
 import { OpenAIService } from '@/lib/openai-service';
-import { Medication } from '@/lib/types';
+import { Medications } from '@/lib/types';
 
 // Initialize services
 let medicationService: MedicationService;
@@ -55,6 +55,27 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { action, patientId, medicationId, medication, question } = body;
+
+    // Handle simple medication creation if no action is specified
+    if (!action && patientId && medication?.name && medication?.dosage) {
+      const newMedication = {
+        name: medication.name,
+        dosage: medication.dosage,
+        frequency: medication.frequency || 'daily',
+        time: medication.time || '08:00',
+        instructions: medication.instructions || ''
+      };
+      
+      await medicationService.addMedication(newMedication, patientId);
+      return NextResponse.json({ 
+        message: 'Medication created successfully',
+        medication: {
+          ...newMedication,
+          patientId,
+          status: 'pending'
+        }
+      });
+    }
 
     console.log('Processing action:', action, 'for medication:', medication?.name);
 

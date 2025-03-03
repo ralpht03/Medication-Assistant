@@ -1,54 +1,41 @@
 import { useState } from 'react'
 
 interface ProgressChartProps {
-  data: {
-    percentage: number
-    streak: number
-    history: {
-      date: string
-      taken: number
-      total: number
-    }[]
-  }
-  period: 'weekly' | 'monthly'
-  onPeriodChange?: (period: 'weekly' | 'monthly') => void
+  data?: {
+    percentage: number;
+    streak: number;
+    total: number;
+    taken: number;
+    missed: number;
+  };
+  loading?: boolean;
 }
 
-const ProgressChart = ({ data, period, onPeriodChange }: ProgressChartProps) => {
-  const [selectedPeriod, setSelectedPeriod] = useState(period)
+export default function ProgressChart({ data, loading = false }: ProgressChartProps) {
+  if (loading) {
+    return (
+      <div className="bg-white p-6 rounded-lg shadow-md animate-pulse">
+        <div className="h-48 bg-gray-200 rounded"></div>
+      </div>
+    );
+  }
 
-  const handlePeriodChange = (newPeriod: 'weekly' | 'monthly') => {
-    setSelectedPeriod(newPeriod)
-    onPeriodChange?.(newPeriod)
+  // If no data, show empty state
+  if (!data) {
+    return (
+      <div className="bg-white p-6 rounded-lg shadow-md">
+        <div className="text-center py-12">
+          <p className="text-gray-500">No adherence data available</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-lg font-medium text-gray-900">Medication Adherence</h3>
-        <div className="flex space-x-2">
-          <button
-            onClick={() => handlePeriodChange('weekly')}
-            className={`px-3 py-1 text-sm rounded-md transition-colors ${
-              selectedPeriod === 'weekly'
-                ? 'bg-blue-100 text-blue-700'
-                : 'text-gray-500 hover:bg-gray-100'
-            }`}
-          >
-            Weekly
-          </button>
-          <button
-            onClick={() => handlePeriodChange('monthly')}
-            className={`px-3 py-1 text-sm rounded-md transition-colors ${
-              selectedPeriod === 'monthly'
-                ? 'bg-blue-100 text-blue-700'
-                : 'text-gray-500 hover:bg-gray-100'
-            }`}
-          >
-            Monthly
-          </button>
-        </div>
-      </div>
+    <div className="bg-white p-6 rounded-lg shadow-md">
+      <h3 className="text-lg font-semibold text-gray-900 mb-4">
+        Medication Adherence
+      </h3>
 
       <div className="flex items-center justify-between mb-4">
         <div className="text-3xl font-bold text-blue-600">{data.percentage}%</div>
@@ -57,35 +44,35 @@ const ProgressChart = ({ data, period, onPeriodChange }: ProgressChartProps) => 
         </div>
       </div>
 
-      <div className="relative pt-1">
-        <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-blue-200">
-          <div
-            style={{ width: `${data.percentage}%` }}
-            className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500 transition-all duration-500"
-          />
+      <div className="space-y-4">
+        <div>
+          <div className="flex justify-between text-sm text-gray-500 mb-1">
+            <span>Total medications</span>
+            <span className="font-medium text-gray-900">{data.total}</span>
+          </div>
+          <div className="h-2 bg-gray-200 rounded-full">
+            <div
+              className="h-2 bg-blue-600 rounded-full"
+              style={{ width: `${data.percentage}%` }}
+            ></div>
+          </div>
         </div>
-      </div>
 
-      <div className="mt-6 space-y-2">
-        {data.history.map((day, index) => (
-          <div key={day.date} className="flex items-center justify-between">
-            <div className="text-sm text-gray-500">{day.date}</div>
-            <div className="flex items-center">
-              <div className="text-sm font-medium text-gray-900">
-                {day.taken}/{day.total}
-              </div>
-              <div className="ml-2 w-16 bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-blue-500 h-2 rounded-full"
-                  style={{ width: `${(day.taken / day.total) * 100}%` }}
-                />
-              </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <div className="text-sm text-gray-500 mb-1">Taken</div>
+            <div className="text-lg font-semibold text-green-600">
+              {data.taken}
             </div>
           </div>
-        ))}
+          <div>
+            <div className="text-sm text-gray-500 mb-1">Missed</div>
+            <div className="text-lg font-semibold text-red-600">
+              {data.missed}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-  )
+  );
 }
-
-export default ProgressChart

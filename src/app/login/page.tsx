@@ -8,13 +8,12 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setIsLoading(true);
+    console.log('Login attempt with:', { email, password });
 
     try {
       const response = await fetch("/api/auth/login", {
@@ -25,30 +24,53 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
+      // Parse the JSON response once
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.message || "Login failed");
       }
 
+      // Store user data in localStorage for persistence
+      localStorage.setItem('user', JSON.stringify(data.user));
+      
+      console.log('Login successful:', data.user);
       // Role-based routing
+      console.log('Redirecting based on role:', data.user.role);
+      
+      let targetPath = "/patient/dashboard";
       switch (data.user.role) {
         case "patient":
-          router.push("/patient/dashboard");
+          targetPath = "/patient/dashboard";
           break;
         case "admin":
-          router.push("/admin/dashboard");
+          targetPath = "/admin/dashboard";
           break;
         case "helper":
-          router.push("/helper/dashboard");
+          targetPath = "/helper/dashboard";
           break;
         default:
-          router.push("/patient/dashboard");
+          targetPath = "/patient/dashboard";
+      }
+      
+      console.log('Navigating to:', targetPath);
+      
+      // Try a more forceful navigation approach
+      try {
+        router.push(targetPath);
+        
+        // If router.push doesn't seem to work, try window.location as a fallback
+        setTimeout(() => {
+          console.log('Fallback navigation with window.location');
+          window.location.href = targetPath;
+        }, 500);
+      } catch (navError) {
+        console.error('Navigation error:', navError);
+        // Direct browser navigation as last resort
+        window.location.href = targetPath;
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
-      setIsLoading(false);
+      setError(err instanceof Error ? err.message : "Login failed");
     }
   };
 
@@ -63,6 +85,12 @@ export default function LoginPage() {
             Sign in to access your dashboard
           </p>
         </div>
+
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+            <span className="block sm:inline">{error}</span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-6">
           <div className="rounded-md shadow-sm -space-y-px">
@@ -80,7 +108,6 @@ export default function LoginPage() {
                 placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                disabled={isLoading}
               />
             </div>
             <div>
@@ -97,7 +124,6 @@ export default function LoginPage() {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                disabled={isLoading}
               />
             </div>
           </div>
@@ -111,22 +137,21 @@ export default function LoginPage() {
           <div>
             <button
               type="submit"
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={isLoading}
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
-              {isLoading ? "Signing in..." : "Sign in"}
+              Sign in
             </button>
           </div>
-        </form>
 
-        <div className="text-sm text-center">
-          <Link
-            href="/signup"
-            className="font-medium text-blue-600 hover:text-blue-500"
-          >
-            Don&apos;t have an account? Sign up
-          </Link>
-        </div>
+          <div className="text-sm text-center">
+            <Link
+              href="/signup"
+              className="font-medium text-blue-600 hover:text-blue-500"
+            >
+              Don&apos;t have an account? Sign up
+            </Link>
+          </div>
+        </form>
       </div>
     </div>
   );
