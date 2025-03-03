@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { Search, MoreVertical, AlertCircle, CheckCircle } from "lucide-react"
+import { Search, MoreVertical, AlertCircle, CheckCircle, PlusCircle } from "lucide-react"
+import MedicationAssignmentModal from "./MedicationAssignmentModal"
 
 interface Patient {
   id: string
@@ -34,6 +35,7 @@ const PatientListTable = () => {
   const [searchTerm, setSearchTerm] = useState("")
   const [sortField, setSortField] = useState<keyof Patient>("name")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
 
   const handleSort = (field: keyof Patient) => {
     if (field === sortField) {
@@ -55,6 +57,14 @@ const PatientListTable = () => {
       default:
         return "bg-gray-100 text-gray-800"
     }
+  }
+  
+  const handlePatientClick = (patient: Patient) => {
+    setSelectedPatient(patient)
+  }
+  
+  const handleCloseModal = () => {
+    setSelectedPatient(null)
   }
 
   const filteredPatients = mockPatients
@@ -127,7 +137,11 @@ const PatientListTable = () => {
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredPatients.map((patient) => (
-              <tr key={patient.id} className="hover:bg-gray-50">
+              <tr
+                key={patient.id}
+                className="hover:bg-gray-50 cursor-pointer"
+                onClick={() => handlePatientClick(patient)}
+              >
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm font-medium text-gray-900">{patient.name}</div>
                 </td>
@@ -165,6 +179,14 @@ const PatientListTable = () => {
           </tbody>
         </table>
       </div>
+      
+      {/* Medication Assignment Modal */}
+      {selectedPatient && (
+        <MedicationAssignmentModal
+          patient={selectedPatient}
+          onClose={handleCloseModal}
+        />
+      )}
     </div>
   )
 }

@@ -142,8 +142,19 @@ export interface Medication {
   name: string; // Name of the medication
   dosage: string; // Dosage of the medication
   frequency: string; // Frequency of the medication
-  time: string; // Time of day to take the medication
+  time?: string; // Time of day to take the medication
   instructions?: string; // Special instructions for taking the medication (optional)
+  
+  // New fields for medication assignment
+  route?: string; // Route of administration
+  startDate?: string; // Start date
+  endDate?: string; // End date
+  verificationMethod?: 'manual-entry' | 'live-feed' | 'patient-helper'; // Verification method
+  prescribingDoctor?: string; // Prescribing doctor
+  pharmacy?: string; // Pharmacy
+  notes?: string; // Notes
+  refillsRemaining?: number; // Refills remaining
+  lastFilled?: string; // Last filled date
 }
 
 export interface Prescription {
