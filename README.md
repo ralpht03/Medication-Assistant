@@ -31,9 +31,27 @@ Before you begin, ensure you have met the following requirements:
 3. Set up environment variables:
    Create a `.env.local` file in the root directory with the following variables:
    ```env
+   # Database connection
    DATABASE_URL="postgresql://user:password@localhost:5432/medication_assistant"
+   
+   # Authentication
    NEXTAUTH_SECRET="your-secret-key"
    NEXTAUTH_URL="http://localhost:3000"
+   
+   # Azure Storage (for invitation system)
+   AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=youraccount;AccountKey=yourkey;EndpointSuffix=core.windows.net"
+   
+   # Azure Communication Services for Email (for invitation emails)
+   AZURE_COMMUNICATION_SERVICES_CONNECTION_STRING="endpoint=https://your-resource-name.communication.azure.com/;accesskey=your-access-key"
+   ACS_FROM_EMAIL="DoNotReply@your-verified-domain.com"
+   ACS_FROM_NAME="Medication Assistant"
+   
+   # IMPORTANT: You must replace the placeholder values above with your actual Azure credentials
+   # The application will not function correctly with the placeholder values
+   # See docs/azure-communication-services-setup.md for detailed setup instructions
+   
+   # Base URL for invitation links
+   NEXT_PUBLIC_BASE_URL="http://localhost:3000"
    ```
 
 4. Run database migrations:
@@ -62,12 +80,37 @@ medication-assistant/
 ├── public/                # Static assets
 ├── src/                   # Application source code
 │   ├── app/               # Next.js app router
+│   │   ├── api/           # API routes
+│   │   │   ├── invitations/  # Invitation system API endpoints
+│   │   ├── invitation/    # Invitation acceptance pages
 │   ├── components/        # Reusable components
+│   │   ├── InvitationForm.tsx  # Form for sending invitations
+│   │   ├── InvitationList.tsx  # List of sent invitations
 │   ├── lib/               # Shared utilities and types
+│   │   ├── azure/         # Azure Table Storage services
+│   │   ├── email-service.ts  # Email service for invitations
 ├── .env.local             # Environment variables
 ├── package.json           # Project dependencies and scripts
 └── README.md              # Project documentation
 ```
+
+## Features
+
+### User Management
+- Role-based authentication (Admin, Patient, Helper)
+- User profiles and settings
+
+### Medication Management
+- Medication tracking and scheduling
+- Adherence monitoring
+- Medication verification
+
+### Invitation System
+- Email-based invitations for new users
+- Admin can invite patients
+- Patients can invite helpers
+- Secure one-time use invitation links
+- Automatic user relationship establishment
 
 ## Available Scripts
 

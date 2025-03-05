@@ -2,16 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import Header from '@/components/Header'
-import Sidebar from '@/components/Sidebar'
 import MedicationCard from '@/components/shared/MedicationCard'
 import ProgressChart from '@/components/shared/ProgressChart'
-import { AzureTableService } from '@/lib/azure/table-service'
-import UpcomingDoses from '@/components/UpcomingDoses'
-import PillIdentification from '@/components/PillIdentification'
 import { Medications, Adherence, DashboardMedication } from '@/lib/types'
-import { Camera, Check, Shield } from 'lucide-react'
+import { Camera, Check } from 'lucide-react'
+import PageLayout from '@/components/PageLayout'
 
 interface AdherenceData {
   percentage: number;
@@ -173,134 +168,90 @@ export default function DashboardPage() {
     router.push('/patient/camera');
   };
 
-  if (loading) return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-    </div>
-  )
-
   return (
-    <div className="min-h-screen bg-gray-100">
-      <Header />
-      <div className="flex">
-        <Sidebar />
-        <main className="flex-1 p-8 ml-64">
-          <div className="max-w-7xl mx-auto">
-            <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
-            
-            {/* Progress Chart Section */}
-            <div className="mb-8">
-              <ProgressChart 
-                data={adherenceData ? {
-                  percentage: Number(adherenceData.adherencePercentage),
-                  streak: 0, // Add calculation if needed
-                  total: 0,  // Add calculation if needed
-                  taken: 0,  // Add calculation if needed
-                  missed: 0  // Add calculation if needed
-                } : undefined}
-                loading={loading}
-              />
-            </div>
+    <PageLayout userType="patient" title="Dashboard">
+      {/* Progress Chart Section */}
+      <div className="mb-6 sm:mb-8">
+        <ProgressChart
+          data={adherenceData ? {
+            percentage: Number(adherenceData.adherencePercentage),
+            streak: 0, // Add calculation if needed
+            total: 0,  // Add calculation if needed
+            taken: 0,  // Add calculation if needed
+            missed: 0  // Add calculation if needed
+          } : undefined}
+          loading={loading}
+        />
+      </div>
 
-            {/* Pill Identification Section */}
-            <div className="mb-8">
-              <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-                <div className="p-6 border-b border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-xl font-semibold text-gray-800">Pill Identification</h2>
-                      <p className="text-gray-600 mt-1">Verify your medications using AI-powered recognition</p>
-                    </div>
-                    <div className="hidden sm:block">
-                      <Camera className="w-8 h-8 text-blue-500" />
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="p-6 bg-gradient-to-br from-blue-50 to-white">
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
-                    <div className="flex-1 w-full">
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                            <Camera className="w-4 h-4 text-blue-600" />
-                          </div>
-                          <p className="text-sm text-gray-600">Take a clear photo of your medication</p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                            <Check className="w-4 h-4 text-green-600" />
-                          </div>
-                          <p className="text-sm text-gray-600">Get instant verification results</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="w-full sm:w-auto">
-                      <button
-                        onClick={handleCameraClick}
-                        disabled={isNavigating}
-                        className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-lg transition-all transform hover:scale-105 ${
-                          isNavigating 
-                            ? 'bg-gray-400 cursor-not-allowed' 
-                            : 'bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl'
-                        } text-white font-medium`}
-                      >
-                        {isNavigating ? (
-                          <>
-                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                            <span>Opening Camera...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Camera className="w-5 h-5" />
-                            <span>Open Camera</span>
-                          </>
-                        )}
-                      </button>
-                      
-                      <p className="text-xs text-gray-500 mt-2 text-center sm:text-left">
-                        Camera access required for identification
-                      </p>
-                    </div>
-                  </div>
-                </div>
+      {/* Pill Identification Section */}
+      <div className="mb-6 sm:mb-8">
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+          <div className="p-4 sm:p-6 border-b border-gray-100">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800">Pill Identification</h2>
+                <p className="text-gray-600 mt-1">Verify your medications using AI-powered recognition</p>
               </div>
-            </div>
-
-            {/* Medical Adherence - Spans 4 columns on large screens */}
-            <div className="mb-8">
-              <div className="lg:col-span-4">
-                <ProgressChart
-                  data={{
-                    percentage: mockAdherenceData.percentage,
-                    streak: mockAdherenceData.streak,
-                    total: mockAdherenceData.history.reduce((sum, day) => sum + day.total, 0),
-                    taken: mockAdherenceData.history.reduce((sum, day) => sum + day.taken, 0),
-                    missed: mockAdherenceData.history.reduce((sum, day) => sum + (day.total - day.taken), 0)
-                  }}
-                  loading={false}
-                />
+              <div className="hidden sm:block">
+                <Camera className="w-8 h-8 text-blue-500" />
               </div>
-            </div>
-
-            {/* Medications Section */}
-            <div className="space-y-6">
-              <h2 className="text-2xl font-semibold">Today's Medications</h2>
-              {medications.map((medication) => (
-                <MedicationCard
-                  key={medication.id}
-                  medication={medication}
-                  showActions={true}
-                  onTake={() => handleMedicationAction(medication.id, 'take')}
-                  onSnooze={() => handleMedicationAction(medication.id, 'snooze')}
-                />
-              ))}
             </div>
           </div>
-        </main>
+          
+          <div className="p-4 sm:p-6 bg-gradient-to-br from-blue-50 to-white">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+              <div className="flex-1 w-full">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                      <Camera className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <p className="text-sm text-gray-600">Take a clear photo of your medication</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                      <Check className="w-4 h-4 text-green-600" />
+                    </div>
+                    <p className="text-sm text-gray-600">Get instant verification results</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="w-full sm:w-auto">
+                <button
+                  onClick={handleCameraClick}
+                  disabled={isNavigating}
+                  className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-lg transition-all transform hover:scale-105 ${
+                    isNavigating
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl'
+                  } text-white font-medium`}
+                >
+                  {isNavigating ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      <span>Opening Camera...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="w-5 h-5" />
+                      <span>Open Camera</span>
+                    </>
+                  )}
+                </button>
+                
+                <p className="text-xs text-gray-500 mt-2 text-center sm:text-left">
+                  Camera access required for identification
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+
+      {/* Removed Today's Medications section as requested */}
+    </PageLayout>
   )
 }
 
@@ -313,7 +264,7 @@ function calculateAdherencePercentage(records: AdherenceRecord[]): number {
 
 function calculateStreak(records: AdherenceRecord[]): number {
   let streak = 0
-  const sortedRecords = records.sort((a, b) => 
+  const sortedRecords = records.sort((a, b) =>
     new Date(b.Timestamp).getTime() - new Date(a.Timestamp).getTime()
   )
 
@@ -334,7 +285,7 @@ function calculateDailyHistory(records: AdherenceRecord[]): Array<{date: string;
   for (let i = 6; i >= 0; i--) {
     const date = new Date()
     date.setDate(date.getDate() - i)
-    const dayRecords = records.filter(r => 
+    const dayRecords = records.filter(r =>
       new Date(r.Timestamp).toDateString() === date.toDateString()
     )
 

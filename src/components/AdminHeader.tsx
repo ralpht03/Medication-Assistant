@@ -13,18 +13,18 @@ const AdminHeader = ({ unreadNotifications = 0 }: AdminHeaderProps) => {
   const [showUserMenu, setShowUserMenu] = useState(false)
 
   return (
-    <header className="bg-white shadow-md w-full fixed top-0 z-50">
+    <header className="bg-white shadow-md w-full z-10 flex-shrink-0">
       <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center">
-            <Image 
-              src="/medicationlogo.png" 
-              alt="Medication Assistant Logo" 
-              width={40} 
+            <Image
+              src="/medicationlogo.png"
+              alt="Medication Assistant Logo"
+              width={40}
               height={40}
               className="object-contain"
             />
-            <h1 className="ml-2 text-xl font-semibold text-gray-800">Medication Assistant</h1>
+            <h1 className="ml-2 text-xl font-semibold text-gray-800 hidden sm:block">Medication Assistant</h1>
           </div>
           <div className="flex items-center">
             <Link

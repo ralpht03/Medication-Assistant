@@ -1,9 +1,8 @@
 "use client"
 
 import { useState } from 'react'
-import Header from '@/components/Header'
-import Sidebar from '@/components/Sidebar'
 import NotificationsPanel from '@/components/NotificationsPanel'
+import PageLayout from '@/components/PageLayout'
 
 interface Notification {
   id: string | number
@@ -49,27 +48,20 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <Header />
-      <div className="flex">
-        <Sidebar />
-        <main className="flex-1 p-8 ml-64">
-          <div className="max-w-4xl mx-auto">
-            <h1 className="text-3xl font-bold mb-8">Notifications</h1>
-            <div className="bg-white rounded-lg shadow-md">
-              <NotificationsPanel
-                notifications={notifications}
-                onNotificationClick={handleNotificationClick}
-                onDismiss={(id) =>
-                  setNotifications(notifications =>
-                    notifications.filter(n => n.id !== id)
-                  )
-                }
-              />
-            </div>
-          </div>
-        </main>
+    <PageLayout userType="patient">
+      <div className="max-w-4xl mx-auto">
+        <div className="bg-white rounded-lg shadow-md">
+          <NotificationsPanel
+            notifications={notifications}
+            onNotificationClick={handleNotificationClick}
+            onDismiss={(id) =>
+              setNotifications(notifications =>
+                notifications.filter(n => n.id !== id)
+              )
+            }
+          />
+        </div>
       </div>
-    </div>
+    </PageLayout>
   )
 }

@@ -2,10 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
-import Header from '@/components/Header'
-import Sidebar from '@/components/Sidebar'
 import QuestionInput from '@/components/shared/QuestionInput'
 import EmergencyPanel from '@/components/shared/EmergencyPanel'
+import PageLayout from '@/components/PageLayout'
 import { Medication } from '@/lib/types'
 
 interface LLMResponse {
@@ -145,158 +144,145 @@ export default function AIAssistantPage() {
     }
   ]
 
-  if (!hasAcknowledgedDisclaimer) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-lg">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Important Medical Disclaimer</h2>
-          <div className="prose prose-sm">
-            <p className="text-red-600 font-semibold mb-4">
-              Please read this disclaimer carefully before using the AI Assistant.
-            </p>
-            <div className="space-y-4 text-gray-700">
-              <p>
-                The AI Assistant is provided for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment.
-              </p>
-              <p>
-                Always seek the advice of your physician or other qualified health provider with any questions you may have regarding a medical condition or medication.
-              </p>
-              <p>
-                Never disregard professional medical advice or delay in seeking it because of something you have read or learned from this AI Assistant.
-              </p>
-              <p>
-                The information provided by this AI Assistant:
-              </p>
-              <ul className="list-disc pl-5">
-                <li>Is not medical advice</li>
-                <li>Should not be used in medical emergencies</li>
-                <li>May not be completely accurate or up-to-date</li>
-                <li>Should always be verified with your healthcare provider</li>
-              </ul>
-              <p>
-                In case of a medical emergency, immediately call your doctor or emergency services.
-              </p>
-              <p className="font-semibold">
-                By clicking "I Understand and Agree" below, you acknowledge that you have read, understood, and agree to these terms and limitations of the AI Assistant.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => setHasAcknowledgedDisclaimer(true)}
-            className="mt-6 w-full bg-blue-500 text-white py-3 px-4 rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-          >
-            I Understand and Agree
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="min-h-screen bg-gray-100">
-      <Header />
-      <div className="flex h-screen pt-16">
-        <div className="w-64 flex-shrink-0">
-          <Sidebar />
-        </div>
-        <main className="flex-1 overflow-hidden">
-          <div className="h-full flex">
-            {/* Main content area */}
-            <div className="flex-1 p-6 overflow-y-auto">
-              <div className="max-w-4xl mx-auto">
-                <h1 className="text-2xl font-bold text-gray-900 mb-6">AI Assistant</h1>
-
-                {/* Medication Selection */}
-                <div className="mb-6">
-                  <h2 className="text-lg font-semibold text-gray-700 mb-3">Select Medication</h2>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {medications.map((med) => (
-                      <button
-                        key={med.rowKey}
-                        onClick={() => setSelectedMedication(med)}
-                        className={`px-4 py-2 rounded-lg shadow-sm transition-colors ${
-                          selectedMedication?.rowKey === med.rowKey
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-white border border-gray-200 hover:bg-gray-50'
-                        }`}
-                      >
-                        {med.name}
-                      </button>
-                    ))}
-                  </div>
-                  {selectedMedication && (
-                    <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                      <p className="font-medium text-blue-900">Selected: {selectedMedication.name}</p>
-                      <p className="text-sm text-blue-700">Dosage: {selectedMedication.dosage}</p>
-                      <p className="text-sm text-blue-700">Frequency: {selectedMedication.frequency}</p>
-                      {selectedMedication.instructions && (
-                        <p className="text-sm text-blue-700">Instructions: {selectedMedication.instructions}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Quick Actions */}
-                <div className="mb-6">
-                  <h2 className="text-lg font-semibold text-gray-700 mb-3">Quick Questions</h2>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {quickActions.map((action, index) => (
-                      <button
-                        key={index}
-                        onClick={() => handleQuestionSubmit(action.question)}
-                        className="px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-                      >
-                        {action.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Error Display */}
-                {error && (
-                  <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-red-600">{error}</p>
-                  </div>
-                )}
-
-                {/* Question Input */}
-                <div className="mb-6">
-                  <QuestionInput
-                    onSubmit={handleQuestionSubmit}
-                    isLoading={isLoading}
-                  />
-                </div>
-
-                {/* Conversation History */}
-                <div className="space-y-6">
-                  {conversations.map((conv, index) => (
-                    <div key={index} className="bg-white rounded-lg shadow-sm p-4">
-                      <div className="mb-4">
-                        <p className="font-medium text-gray-900">You asked:</p>
-                        <p className="mt-1 text-gray-600">{conv.question}</p>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">Response:</p>
-                        <div className="mt-1 text-gray-600 prose prose-sm max-w-none">
-                          <ReactMarkdown>{conv.response.text}</ReactMarkdown>
-                        </div>
-                        <p className="mt-2 text-sm text-gray-500">
-                          {conv.response.timestamp.toLocaleTimeString()}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+    <PageLayout userType="patient" title="AI Assistant">
+      {/* Modal Disclaimer */}
+      {!hasAcknowledgedDisclaimer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-white/30">
+          <div className="max-w-2xl w-full bg-white rounded-lg shadow-xl p-6 m-4">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Important Medical Disclaimer</h2>
+            <div className="prose prose-sm">
+              <p className="text-red-600 font-semibold mb-4">
+                Please read this disclaimer carefully before using the AI Assistant.
+              </p>
+              <div className="space-y-4 text-gray-700">
+                <p>
+                  The AI Assistant is provided for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment.
+                </p>
+                <p>
+                  Always seek the advice of your physician or other qualified health provider with any questions you may have regarding a medical condition or medication.
+                </p>
+                <p>
+                  Never disregard professional medical advice or delay in seeking it because of something you have read or learned from this AI Assistant.
+                </p>
+                <p>
+                  The information provided by this AI Assistant:
+                </p>
+                <ul className="list-disc pl-5">
+                  <li>Is not medical advice</li>
+                  <li>Should not be used in medical emergencies</li>
+                  <li>May not be completely accurate or up-to-date</li>
+                  <li>Should always be verified with your healthcare provider</li>
+                </ul>
+                <p>
+                  In case of a medical emergency, immediately call your doctor or emergency services.
+                </p>
+                <p className="font-semibold">
+                  By clicking "I Understand and Agree" below, you acknowledge that you have read, understood, and agree to these terms and limitations of the AI Assistant.
+                </p>
               </div>
             </div>
+            <button
+              onClick={() => setHasAcknowledgedDisclaimer(true)}
+              className="mt-6 w-full bg-blue-500 text-white py-3 px-4 rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+            >
+              I Understand and Agree
+            </button>
+          </div>
+        </div>
+      )}
 
-            {/* Emergency Information Sidebar */}
-            <div className="w-80 border-l border-gray-200 bg-white p-6 overflow-y-auto">
-              <EmergencyPanel />
+      <div className="h-full flex">
+        {/* Main content area */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Medication Selection */}
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold text-gray-700 mb-3">Select Medication</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {medications.map((med) => (
+                <button
+                  key={med.rowKey}
+                  onClick={() => setSelectedMedication(med)}
+                  className={`px-4 py-2 rounded-lg shadow-sm transition-colors ${
+                    selectedMedication?.rowKey === med.rowKey
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-white border border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {med.name}
+                </button>
+              ))}
+            </div>
+            {selectedMedication && (
+              <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                <p className="font-medium text-blue-900">Selected: {selectedMedication.name}</p>
+                <p className="text-sm text-blue-700">Dosage: {selectedMedication.dosage}</p>
+                <p className="text-sm text-blue-700">Frequency: {selectedMedication.frequency}</p>
+                {selectedMedication.instructions && (
+                  <p className="text-sm text-blue-700">Instructions: {selectedMedication.instructions}</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Quick Actions */}
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold text-gray-700 mb-3">Quick Questions</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {quickActions.map((action, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleQuestionSubmit(action.question)}
+                  className="px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                >
+                  {action.label}
+                </button>
+              ))}
             </div>
           </div>
-        </main>
+
+          {/* Error Display */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-600">{error}</p>
+            </div>
+          )}
+
+          {/* Question Input */}
+          <div className="mb-6">
+            <QuestionInput
+              onSubmit={handleQuestionSubmit}
+              isLoading={isLoading}
+            />
+          </div>
+
+          {/* Conversation History */}
+          <div className="space-y-6">
+            {conversations.map((conv, index) => (
+              <div key={index} className="bg-white rounded-lg shadow-sm p-4">
+                <div className="mb-4">
+                  <p className="font-medium text-gray-900">You asked:</p>
+                  <p className="mt-1 text-gray-600">{conv.question}</p>
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900">Response:</p>
+                  <div className="mt-1 text-gray-600 prose prose-sm max-w-none">
+                    <ReactMarkdown>{conv.response.text}</ReactMarkdown>
+                  </div>
+                  <p className="mt-2 text-sm text-gray-500">
+                    {conv.response.timestamp.toLocaleTimeString()}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Emergency Information Sidebar */}
+        <div className="w-80 border-l border-gray-200 bg-white p-6 overflow-y-auto">
+          <EmergencyPanel />
+        </div>
       </div>
-    </div>
+    </PageLayout>
   )
 }

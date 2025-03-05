@@ -10,10 +10,12 @@
   },
   "dependencies": {
     "@azure/cognitiveservices-customvision-prediction": "^5.1.2",
+    "@azure/communication-email": "^1.0.0",
     "@azure/data-tables": "^13.3.0",
     "@azure/ms-rest-js": "^2.7.0",
     "@azure/openai": "^2.0.0",
     "@azure/storage-blob": "^12.26.0",
+    "@sendgrid/mail": "^8.1.4",
     "@tailwindcss/postcss": "^4.0.8",
     "@techstark/opencv-js": "^4.10.0-release.1",
     "@types/bcrypt": "^5.0.2",
