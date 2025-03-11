@@ -54,9 +54,70 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { action, patientId, medicationId, medication, question } = body;
+    const {
+      action,
+      patientId,
+      medicationId,
+      medication,
+      question,
+      // Direct fields for medication assignment
+      name,
+      dosage,
+      frequency,
+      route,
+      startDate,
+      endDate,
+      verificationMethod,
+      prescribingDoctor,
+      pharmacy,
+      notes,
+      refillsRemaining,
+      lastFilled
+    } = body;
 
-    // Handle simple medication creation if no action is specified
+    // Handle direct medication creation (from medication assignment modal)
+    if (!action && patientId && name && dosage && frequency && route && startDate && endDate && verificationMethod) {
+      // Validate dates
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      if (end < start) {
+        return NextResponse.json({ error: 'End date must be after start date' }, { status: 400 });
+      }
+
+      // Validate verification method
+      const validMethods = ['manual-entry', 'live-feed', 'patient-helper'];
+      if (!validMethods.includes(verificationMethod)) {
+        return NextResponse.json({ error: 'Invalid verification method' }, { status: 400 });
+      }
+
+      const newMedication = {
+        name,
+        dosage,
+        frequency,
+        route,
+        startDate,
+        endDate,
+        verificationMethod,
+        prescribingDoctor: prescribingDoctor || '',
+        pharmacy: pharmacy || '',
+        notes: notes || '',
+        refillsRemaining: refillsRemaining || 0,
+        lastFilled: lastFilled || '',
+        time: '08:00' // Default time
+      };
+      
+      await medicationService.addMedication(newMedication, patientId);
+      return NextResponse.json({
+        message: 'Medication created successfully',
+        medication: {
+          ...newMedication,
+          patientId,
+          status: 'pending'
+        }
+      });
+    }
+    
+    // Handle legacy medication creation if no action is specified
     if (!action && patientId && medication?.name && medication?.dosage) {
       const newMedication = {
         name: medication.name,
@@ -67,7 +128,7 @@ export async function POST(request: Request) {
       };
       
       await medicationService.addMedication(newMedication, patientId);
-      return NextResponse.json({ 
+      return NextResponse.json({
         message: 'Medication created successfully',
         medication: {
           ...newMedication,

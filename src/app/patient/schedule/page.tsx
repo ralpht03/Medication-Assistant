@@ -1,11 +1,10 @@
 "use client"
 
 import { useState } from 'react'
-import Header from '@/components/Header'
-import Sidebar from '@/components/Sidebar'
 import Calendar from '@/components/shared/Calendar'
 import Timeline from '@/components/shared/Timeline'
 import { format, addDays, subDays } from 'date-fns'
+import PageLayout from '@/components/PageLayout'
 
 interface MedicationEvent {
   id: string | number
@@ -86,87 +85,76 @@ export default function SchedulePage() {
     setSelectedEvent(event)
   }
 
-  const filteredTimelineEvents = mockTimelineEvents.filter(event => 
+  const filteredTimelineEvents = mockTimelineEvents.filter(event =>
     statusFilter === 'all' ? true : event.status === statusFilter
   )
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <Header />
-      <div className="flex min-h-screen pt-16">
-        <div className="w-64 flex-shrink-0">
-          <Sidebar />
+    <PageLayout userType="patient" title="Medication Schedule">
+      {/* Calendar Section */}
+      <section className="mb-8">
+        <div className="bg-white rounded-lg shadow-md">
+          <div className="p-6">
+            <Calendar
+              events={mockCalendarEvents}
+              onEventClick={handleEventClick}
+            />
+          </div>
         </div>
-        <div className="flex-1">
-          <div className="px-8 py-6">
-            {/* Calendar Section */}
-            <section className="mb-8">
-              <div className="bg-white rounded-lg shadow-md">
-                <div className="p-6">
-                  <h2 className="text-2xl font-bold text-gray-900 mb-6">Medication Schedule</h2>
-                  <Calendar
-                    events={mockCalendarEvents}
-                    onEventClick={handleEventClick}
-                  />
-                </div>
-              </div>
-            </section>
+      </section>
 
-            {/* History Section */}
-            <section>
-              <div className="bg-white rounded-lg shadow-md">
-                <div className="p-6">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                    <h2 className="text-2xl font-bold text-gray-900">Medication History</h2>
-                    <div className="flex flex-wrap gap-4">
-                      <select
-                        className="min-w-[150px] bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value as any)}
-                      >
-                        <option value="all">All Status</option>
-                        <option value="taken">Taken</option>
-                        <option value="missed">Missed</option>
-                        <option value="upcoming">Upcoming</option>
-                      </select>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="date"
-                          className="bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={format(dateRange.start, 'yyyy-MM-dd')}
-                          onChange={(e) => {
-                            const newStart = new Date(e.target.value)
-                            setDateRange(prev => ({ ...prev, start: newStart }))
-                          }}
-                        />
-                        <span className="text-gray-500">to</span>
-                        <input
-                          type="date"
-                          className="bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={format(dateRange.end, 'yyyy-MM-dd')}
-                          onChange={(e) => {
-                            const newEnd = new Date(e.target.value)
-                            setDateRange(prev => ({ ...prev, end: newEnd }))
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <Timeline
-                    events={filteredTimelineEvents}
-                    onEventClick={(event) => {
-                      const calendarEvent = mockCalendarEvents.find(e => e.id === event.id)
-                      if (calendarEvent) {
-                        handleEventClick(calendarEvent)
-                      }
+      {/* History Section */}
+      <section>
+        <div className="bg-white rounded-lg shadow-md">
+          <div className="p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Medication History</h2>
+              <div className="flex flex-wrap gap-4">
+                <select
+                  className="min-w-[150px] bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as any)}
+                >
+                  <option value="all">All Status</option>
+                  <option value="taken">Taken</option>
+                  <option value="missed">Missed</option>
+                  <option value="upcoming">Upcoming</option>
+                </select>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    className="bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={format(dateRange.start, 'yyyy-MM-dd')}
+                    onChange={(e) => {
+                      const newStart = new Date(e.target.value)
+                      setDateRange(prev => ({ ...prev, start: newStart }))
+                    }}
+                  />
+                  <span className="text-gray-500">to</span>
+                  <input
+                    type="date"
+                    className="bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={format(dateRange.end, 'yyyy-MM-dd')}
+                    onChange={(e) => {
+                      const newEnd = new Date(e.target.value)
+                      setDateRange(prev => ({ ...prev, end: newEnd }))
                     }}
                   />
                 </div>
               </div>
-            </section>
+            </div>
+            <Timeline
+              events={filteredTimelineEvents}
+              onEventClick={(event) => {
+                const calendarEvent = mockCalendarEvents.find(e => e.id === event.id)
+                if (calendarEvent) {
+                  handleEventClick(calendarEvent)
+                }
+              }}
+            />
           </div>
         </div>
-      </div>
+      </section>
 
       {/* Event Details Modal */}
       {selectedEvent && (
@@ -197,6 +185,7 @@ export default function SchedulePage() {
                 <span className="font-medium">Status:</span>{' '}
                 <span
                   className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
+
                     ${
                       selectedEvent.status === 'taken'
                         ? 'bg-green-100 text-green-800'
@@ -221,6 +210,6 @@ export default function SchedulePage() {
           </div>
         </div>
       )}
-    </div>
+    </PageLayout>
   )
 }
