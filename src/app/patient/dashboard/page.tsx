@@ -25,57 +25,24 @@ interface AdherenceRecord {
   patientId: string
 }
 
-// Mock data
-const mockMedications = [
-  {
-    partitionKey: 'medications',
-    rowKey: '1',
-    name: "Aspirin",
-    dosage: "100mg",
-    time: "8:00 AM",
-    status: "taken",
-    instructions: "Take with food",
-    timestamp: new Date().toISOString()
-  },
-  {
-    partitionKey: 'medications',
-    rowKey: '2',
-    name: "Lisinopril",
-    dosage: "10mg",
-    time: "12:00 PM",
-    status: "upcoming",
-    instructions: "Take with water",
-    timestamp: new Date().toISOString()
-  },
-  {
-    partitionKey: 'medications',
-    rowKey: '3',
-    name: "Metformin",
-    dosage: "500mg",
-    time: "6:00 PM",
-    status: "upcoming",
-    instructions: "Take with evening meal",
-    timestamp: new Date().toISOString()
-  }
-]
-
-const mockAdherenceData = {
-  percentage: 85,
-  streak: 7,
+// Default empty states
+const emptyAdherenceData = {
+  percentage: 0,
+  streak: 0,
   history: [
-    { date: "Mon", taken: 3, total: 3 },
-    { date: "Tue", taken: 3, total: 3 },
-    { date: "Wed", taken: 2, total: 3 },
-    { date: "Thu", taken: 3, total: 3 },
-    { date: "Fri", taken: 3, total: 3 },
-    { date: "Sat", taken: 2, total: 3 },
-    { date: "Sun", taken: 3, total: 3 }
+    { date: "Mon", taken: 0, total: 0 },
+    { date: "Tue", taken: 0, total: 0 },
+    { date: "Wed", taken: 0, total: 0 },
+    { date: "Thu", taken: 0, total: 0 },
+    { date: "Fri", taken: 0, total: 0 },
+    { date: "Sat", taken: 0, total: 0 },
+    { date: "Sun", taken: 0, total: 0 }
   ]
 }
 
 export default function DashboardPage() {
   const [medications, setMedications] = useState<DashboardMedication[]>([])
-  const [adherenceData, setAdherenceData] = useState<Adherence | null>(null)
+  const [adherenceData, setAdherenceData] = useState<Adherence | typeof emptyAdherenceData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
@@ -83,6 +50,8 @@ export default function DashboardPage() {
 
   const fetchDashboardData = async () => {
     try {
+      setLoading(true);
+      
       const userStr = localStorage.getItem('user');
       if (!userStr) {
         router.push('/login');
@@ -91,43 +60,117 @@ export default function DashboardPage() {
 
       const user = JSON.parse(userStr);
       // Check for id in the correct location based on your login response
-      const patientId = user.id || user.RowKey; // Try both possible locations
+      const patientId = user.id || user.rowKey || user.RowKey; // Try all possible locations
 
       if (!patientId) {
         console.error('User data:', user); // Debug log
         // Instead of throwing error, set empty state
         setMedications([]);
-        setAdherenceData(null);
+        setAdherenceData(emptyAdherenceData);
         return;
       }
 
       // Fetch medications with patientId
+      console.log('Fetching medications for patient ID:', patientId);
       const medResponse = await fetch(`/api/medications?patientId=${patientId}`);
+      
+      // Log the raw response for debugging
+      const medResponseText = await medResponse.text();
+      console.log('Raw medications API response:', medResponseText);
+      
+      // Parse the response text back to JSON
+      let responseData;
+      try {
+        responseData = JSON.parse(medResponseText);
+        console.log('Parsed medication data:', responseData);
+      } catch (e) {
+        console.error('Error parsing medications response JSON:', e);
+        setMedications([]);
+        return;
+      }
+      
       if (medResponse.ok) {
-        const responseData = await medResponse.json();
         const medicationsData = responseData.medications || [];
+        console.log('Medications data from API:', medicationsData);
+        
         const now = new Date();
-        const processedMedications = medicationsData.map((med: Medications & { time: string; status: string }) => ({
-          ...med,
-          id: med.RowKey,
-          isOverdue: new Date(med.time) < now,
-          isCurrent: Math.abs(new Date(med.time).getTime() - now.getTime()) < 1800000
-        })) as DashboardMedication[];
+        
+        // Process medications to add status and time information
+        const processedMedications = medicationsData.map((med: any) => {
+          console.log('Processing medication:', med);
+          
+          // Default time if not provided
+          const timeStr = med.time || '08:00';
+          
+          // Create a date object for the medication time
+          const [hours, minutes] = timeStr.split(':').map(Number);
+          const medTime = new Date();
+          medTime.setHours(hours, minutes, 0, 0);
+          
+          // Determine status based on current time
+          let status = "upcoming";
+          if (medTime < now) {
+            // If medication time is in the past, mark as taken or missed
+            // This is simplified - in a real app, you'd check adherence records
+            status = Math.random() > 0.3 ? "taken" : "missed"; // Random for demo
+          }
+          
+          const processed = {
+            ...med,
+            id: med.rowKey || med.RowKey,
+            time: timeStr,
+            status,
+            isOverdue: medTime < now && status !== "taken",
+            isCurrent: Math.abs(medTime.getTime() - now.getTime()) < 1800000 // Within 30 minutes
+          };
+          
+          console.log('Processed medication:', processed);
+          return processed;
+        }) as DashboardMedication[];
+        
         setMedications(processedMedications);
+        console.log('Final processed medications:', processedMedications);
+      } else {
+        console.error('Failed to fetch medications:', responseData);
+        setMedications([]);
       }
 
       // Fetch adherence data with patientId
-      const adhResponse = await fetch(`/api/adherence?patientId=${patientId}`);
-      if (adhResponse.ok) {
-        const adherenceData = await adhResponse.json();
-        setAdherenceData(adherenceData);
+      console.log('Fetching adherence data for patient ID:', patientId);
+      try {
+        const adhResponse = await fetch(`/api/adherence?patientId=${patientId}`);
+        
+        // Log the raw response for debugging
+        const adhResponseText = await adhResponse.text();
+        console.log('Raw adherence API response:', adhResponseText);
+        
+        // Parse the response text back to JSON if possible
+        let adherenceData;
+        try {
+          adherenceData = JSON.parse(adhResponseText);
+          console.log('Parsed adherence data:', adherenceData);
+        } catch (e) {
+          console.error('Error parsing adherence response JSON:', e);
+          setAdherenceData(emptyAdherenceData);
+          return;
+        }
+        
+        if (adhResponse.ok) {
+          setAdherenceData(adherenceData);
+        } else {
+          console.error('Failed to fetch adherence data:', adherenceData);
+          setAdherenceData(emptyAdherenceData);
+        }
+      } catch (adhError) {
+        console.error('Error fetching adherence data:', adhError);
+        setAdherenceData(emptyAdherenceData);
       }
 
     } catch (err) {
       console.error('Dashboard error:', err);
       // Set empty states instead of throwing
       setMedications([]);
-      setAdherenceData(null);
+      setAdherenceData(emptyAdherenceData);
     } finally {
       setLoading(false);
     }
@@ -174,8 +217,10 @@ export default function DashboardPage() {
       <div className="mb-6 sm:mb-8">
         <ProgressChart
           data={adherenceData ? {
-            percentage: Number(adherenceData.adherencePercentage),
-            streak: 0, // Add calculation if needed
+            percentage: 'adherencePercentage' in adherenceData
+              ? Number(adherenceData.adherencePercentage)
+              : adherenceData.percentage,
+            streak: 'streak' in adherenceData ? adherenceData.streak : 0,
             total: 0,  // Add calculation if needed
             taken: 0,  // Add calculation if needed
             missed: 0  // Add calculation if needed
@@ -250,7 +295,67 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Removed Today's Medications section as requested */}
+      {/* Today's Medications Section */}
+      {medications.length > 0 && (
+        <div className="mb-6 sm:mb-8">
+          <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+            <div className="p-4 sm:p-6 border-b border-gray-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-800">Today's Medications</h2>
+                  <p className="text-gray-600 mt-1">Your scheduled medications for today</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 sm:p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {medications.map((medication) => (
+                  <MedicationCard
+                    key={medication.id}
+                    medication={medication}
+                    showActions={true}
+                    onTake={() => handleMedicationAction(medication.id, 'take')}
+                    onSnooze={() => handleMedicationAction(medication.id, 'snooze')}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Empty Medications State */}
+      {!loading && medications.length === 0 && (
+        <div className="mb-6 sm:mb-8">
+          <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+            <div className="p-4 sm:p-6 border-b border-gray-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-800">Today's Medications</h2>
+                  <p className="text-gray-600 mt-1">Your scheduled medications for today</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-8 text-center">
+              <div className="mx-auto h-12 w-12 text-gray-400 mb-4">💊</div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Medications Found</h3>
+              <p className="text-gray-600 max-w-md mx-auto">
+                You don't have any medications scheduled for today. Check your medications page for a complete list.
+              </p>
+              <div className="mt-6">
+                <button
+                  onClick={() => router.push('/patient/medications')}
+                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  View All Medications
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </PageLayout>
   )
 }

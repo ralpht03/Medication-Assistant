@@ -13,9 +13,10 @@ interface Patient {
 interface MedicationAssignmentModalProps {
   patient: Patient
   onClose: () => void
+  onMedicationAssigned?: () => void
 }
 
-const MedicationAssignmentModal = ({ patient, onClose }: MedicationAssignmentModalProps) => {
+const MedicationAssignmentModal = ({ patient, onClose, onMedicationAssigned }: MedicationAssignmentModalProps) => {
   // Form state
   const [name, setName] = useState('')
   const [dosage, setDosage] = useState('')
@@ -79,32 +80,55 @@ const MedicationAssignmentModal = ({ patient, onClose }: MedicationAssignmentMod
     setIsSubmitting(true)
     
     try {
+      console.log('Assigning medication to patient:', patient);
+      
+      const medicationData = {
+        patientId: patient.id,
+        name,
+        dosage,
+        frequency: frequency === 'custom' ? `custom:${customFrequency}` : frequency,
+        route,
+        startDate,
+        endDate,
+        verificationMethod,
+        prescribingDoctor,
+        pharmacy,
+        notes,
+        refillsRemaining: refillsRemaining ? parseInt(refillsRemaining) : 0,
+        lastFilled: lastFilled || null,
+        // Add time field for scheduling
+        time: '08:00', // Default to 8 AM
+      };
+      
+      console.log('Medication data being sent:', medicationData);
+      
       const response = await fetch('/api/medications', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          patientId: patient.id,
-          name,
-          dosage,
-          frequency: frequency === 'custom' ? `custom:${customFrequency}` : frequency,
-          route,
-          startDate,
-          endDate,
-          verificationMethod,
-          prescribingDoctor,
-          pharmacy,
-          notes,
-          refillsRemaining: refillsRemaining ? parseInt(refillsRemaining) : 0,
-          lastFilled: lastFilled || null
-        }),
-      })
+        body: JSON.stringify(medicationData),
+      });
+      
+      // Log the raw response for debugging
+      const responseText = await response.text();
+      console.log('Raw API response:', responseText);
+      
+      // Parse the response text back to JSON
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error('Error parsing response JSON:', e);
+        throw new Error('Invalid JSON response from API');
+      }
       
       if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to create medication')
+        console.error('API error response:', data);
+        throw new Error(data.error || 'Failed to create medication');
       }
+      
+      console.log('Medication assigned successfully:', data);
       
       setSuccess('Medication assigned successfully')
       
@@ -122,6 +146,14 @@ const MedicationAssignmentModal = ({ patient, onClose }: MedicationAssignmentMod
       setNotes('')
       setRefillsRemaining('')
       setLastFilled('')
+      
+      // Call the callback if provided
+      if (onMedicationAssigned) {
+        // Wait a moment to show the success message before closing
+        setTimeout(() => {
+          onMedicationAssigned()
+        }, 1500)
+      }
       
     } catch (err: any) {
       setError(err.message || 'An error occurred')
