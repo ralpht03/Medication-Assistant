@@ -151,7 +151,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ effects: result });
 
       case 'interactions':
-        const medications = await medicationService.getMedications(patientId);
+        const medications = body.medications || await medicationService.getMedications(patientId);
         result = await openAIService.checkInteractions(medications);
         return NextResponse.json({ interactions: result });
 
@@ -164,9 +164,25 @@ export async function POST(request: Request) {
         return NextResponse.json({ response: result });
 
       case 'schedule':
-        const medsForSchedule = await medicationService.getMedications(patientId);
+        const medsForSchedule = body.medications || await medicationService.getMedications(patientId);
         result = await openAIService.getDailySchedule(medsForSchedule);
         return NextResponse.json({ schedule: result });
+        
+      case 'generalInfo':
+        // Handle general medical questions without medication context
+        result = await openAIService.getGeneralMedicalInfo(question);
+        return NextResponse.json({ info: result });
+        
+      case 'generalQuestion':
+        // Handle any question without a specific category
+        result = await openAIService.answerGeneralQuestion(question);
+        return NextResponse.json({ response: result });
+        
+      case 'allMedications':
+        // Handle questions about all medications
+        const allMeds = body.medications || await medicationService.getMedications(patientId);
+        result = await openAIService.getAllMedicationsInfo(question, allMeds);
+        return NextResponse.json({ response: result });
 
       default:
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

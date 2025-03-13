@@ -1,9 +1,8 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import QuestionInput from '@/components/shared/QuestionInput'
-import EmergencyPanel from '@/components/shared/EmergencyPanel'
 import PageLayout from '@/components/PageLayout'
 import { Medication } from '@/lib/types'
 
@@ -24,72 +23,139 @@ export default function AIAssistantPage() {
   const [selectedMedication, setSelectedMedication] = useState<Medication | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [hasAcknowledgedDisclaimer, setHasAcknowledgedDisclaimer] = useState(false)
+  const conversationEndRef = useRef<HTMLDivElement>(null)
+
+  // Scroll to bottom when conversations change
+  useEffect(() => {
+    if (conversationEndRef.current) {
+      conversationEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [conversations]);
 
   useEffect(() => {
     const loadMedications = async () => {
       try {
-        // TODO: Replace with actual patient ID from auth context
-        const patientId = "test-patient-1"
-        const response = await fetch(`/api/medications?patientId=${patientId}`)
-        if (!response.ok) {
-          throw new Error('Failed to fetch medications')
+        // Get the user from localStorage
+        const userStr = localStorage.getItem('user');
+        if (!userStr) {
+          setError('User not found. Please log in again.');
+          return;
         }
-        const data = await response.json()
-        setMedications(data.medications)
-      } catch (err) {
-        console.error('Error loading medications:', err)
-        setError('Failed to load medications. Please try again later.')
-      }
-    }
 
-    loadMedications()
-  }, [])
+        const user = JSON.parse(userStr);
+        // Try all possible ID fields
+        const patientId = user.id || user.rowKey || user.RowKey;
+        
+        if (!patientId) {
+          console.error('Patient ID not found in user data:', user);
+          setError('User ID not found. Please log in again.');
+          return;
+        }
+
+        console.log('Loading medications for patient ID:', patientId);
+        const response = await fetch(`/api/medications?patientId=${patientId}`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch medications');
+        }
+        
+        const data = await response.json();
+        console.log('Medications loaded:', data.medications);
+        setMedications(data.medications || []);
+      } catch (err) {
+        console.error('Error loading medications:', err);
+        setError('Failed to load medications. Please try again later.');
+      }
+    };
+
+    loadMedications();
+  }, []);
 
   const handleQuestionSubmit = async (question: string) => {
-    setIsLoading(true)
-    setError(null)
+    setIsLoading(true);
+    setError(null);
     
     try {
-      let action: string
-      let requestBody: any = {
-        patientId: "test-patient-1" // TODO: Replace with actual patient ID from auth context
+      // Get the user from localStorage
+      const userStr = localStorage.getItem('user');
+      if (!userStr) {
+        setError('User not found. Please log in again.');
+        setIsLoading(false);
+        return;
       }
 
+      const user = JSON.parse(userStr);
+      // Try all possible ID fields
+      const patientId = user.id || user.rowKey || user.RowKey;
+      
+      if (!patientId) {
+        console.error('Patient ID not found in user data:', user);
+        setError('User ID not found. Please log in again.');
+        setIsLoading(false);
+        return;
+      }
+
+      let action: string;
+      let requestBody: any = {
+        patientId: patientId
+      };
+
+      // Check if this is a general medical question (not medication-specific)
+      const isGeneralMedicalQuestion =
+        question.toLowerCase().includes('what is') ||
+        question.toLowerCase().includes('how does') ||
+        question.toLowerCase().includes('can you explain') ||
+        question.toLowerCase().includes('tell me about') ||
+        question.toLowerCase().includes('information on');
+
       // Determine the action and set up the request body
-      if (question.toLowerCase().includes('interaction')) {
+      if (isGeneralMedicalQuestion) {
+        // Handle general medical questions without requiring medication selection
+        action = 'generalInfo';
+        requestBody.question = question;
+      } else if (question.toLowerCase().includes('interaction')) {
         // For interactions, always include all medications for comprehensive analysis
-        action = 'interactions'
+        action = 'interactions';
+        requestBody.medications = medications;
       } else if (question.toLowerCase().includes('schedule')) {
         // For schedule questions, use all medications
-        action = 'schedule'
-      } else if (question.toLowerCase().includes('how should i take') || 
+        action = 'schedule';
+        requestBody.medications = medications;
+      } else if (question.toLowerCase().includes('all medication') ||
+                 question.toLowerCase().includes('my medication')) {
+        // Questions about all medications
+        action = 'allMedications';
+        requestBody.medications = medications;
+        requestBody.question = question;
+      } else if (question.toLowerCase().includes('how should i take') ||
                  question.toLowerCase().includes('dosage info')) {
         if (selectedMedication) {
-          action = 'info'
-          requestBody.medication = selectedMedication
+          action = 'info';
+          requestBody.medication = selectedMedication;
         } else {
           // If no medication is selected for dosage info, get schedule for all medications
-          action = 'schedule'
+          action = 'schedule';
+          requestBody.medications = medications;
         }
       } else if (selectedMedication) {
         if (question.toLowerCase().includes('side effect')) {
-          action = 'sideEffects'
-          requestBody.medication = selectedMedication
+          action = 'sideEffects';
+          requestBody.medication = selectedMedication;
         } else if (question.toLowerCase().includes('miss') || question.toLowerCase().includes('missed')) {
-          action = 'missedDose'
-          requestBody.medication = selectedMedication
+          action = 'missedDose';
+          requestBody.medication = selectedMedication;
         } else if (question.toLowerCase().includes('emergency')) {
-          action = 'emergency'
-          requestBody.medication = selectedMedication
-          requestBody.question = question
+          action = 'emergency';
+          requestBody.medication = selectedMedication;
+          requestBody.question = question;
         } else {
-          action = 'info'
-          requestBody.medication = selectedMedication
+          action = 'info';
+          requestBody.medication = selectedMedication;
         }
       } else {
-        setError('Please select a medication first or ask about interactions/schedule.')
-        setIsLoading(false)
-        return
+        // For any other question without a selected medication, treat it as a general question
+        action = 'generalQuestion';
+        requestBody.question = question;
       }
 
       requestBody.action = action
@@ -107,7 +173,7 @@ export default function AIAssistantPage() {
       }
 
       const data = await response.json()
-      const aiResponse = data.info || data.effects || data.interactions || 
+      const aiResponse = data.info || data.effects || data.interactions ||
                         data.guidance || data.response || data.schedule
 
       setConversations(prev => [...prev, {
@@ -192,95 +258,126 @@ export default function AIAssistantPage() {
         </div>
       )}
 
-      <div className="h-full flex">
-        {/* Main content area */}
-        <div className="flex-1 overflow-y-auto">
-          {/* Medication Selection */}
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold text-gray-700 mb-3">Select Medication</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {medications.map((med) => (
-                <button
-                  key={med.rowKey}
-                  onClick={() => setSelectedMedication(med)}
-                  className={`px-4 py-2 rounded-lg shadow-sm transition-colors ${
-                    selectedMedication?.rowKey === med.rowKey
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-white border border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  {med.name}
-                </button>
-              ))}
-            </div>
-            {selectedMedication && (
-              <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                <p className="font-medium text-blue-900">Selected: {selectedMedication.name}</p>
-                <p className="text-sm text-blue-700">Dosage: {selectedMedication.dosage}</p>
-                <p className="text-sm text-blue-700">Frequency: {selectedMedication.frequency}</p>
-                {selectedMedication.instructions && (
-                  <p className="text-sm text-blue-700">Instructions: {selectedMedication.instructions}</p>
+      {/* Main Chat Interface */}
+      <div className="flex flex-col h-full w-full">
+        {/* Main Chat Area */}
+        <div className="flex-1 flex flex-col bg-gray-50 w-full">
+          {/* Top Controls: Medication Selection and Quick Actions */}
+          <div className="p-4 bg-white border-b border-gray-200 w-full">
+            <div className="flex flex-wrap gap-4 w-full">
+              {/* Medication Selection */}
+              <div className="flex-1 min-w-[300px]">
+                <h2 className="text-lg font-semibold text-gray-700 mb-3">Select Medication</h2>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {medications.map((med) => (
+                    <button
+                      key={med.rowKey}
+                      onClick={() => setSelectedMedication(med)}
+                      className={`px-3 py-2 rounded-lg shadow-sm transition-colors text-sm ${
+                        selectedMedication?.rowKey === med.rowKey
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white border border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      {med.name}
+                    </button>
+                  ))}
+                </div>
+                {selectedMedication && (
+                  <div className="mt-3 p-3 bg-blue-50 rounded-lg text-sm">
+                    <p className="font-medium text-blue-900">Selected: {selectedMedication.name}</p>
+                    <p className="text-blue-700">Dosage: {selectedMedication.dosage}</p>
+                    <p className="text-blue-700">Frequency: {selectedMedication.frequency}</p>
+                    {selectedMedication.instructions && (
+                      <p className="text-blue-700">Instructions: {selectedMedication.instructions}</p>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
 
-          {/* Quick Actions */}
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold text-gray-700 mb-3">Quick Questions</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {quickActions.map((action, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleQuestionSubmit(action.question)}
-                  className="px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-                >
-                  {action.label}
-                </button>
-              ))}
+              {/* Quick Actions */}
+              <div className="flex-1 min-w-[300px]">
+                <h2 className="text-lg font-semibold text-gray-700 mb-3">Quick Questions</h2>
+                <div className="grid grid-cols-2 gap-2">
+                  {quickActions.map((action, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleQuestionSubmit(action.question)}
+                      className="px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors text-sm"
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Error Display */}
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-600">{error}</p>
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg m-4">
+              <p className="text-red-600 text-sm">{error}</p>
             </div>
           )}
 
-          {/* Question Input */}
-          <div className="mb-6">
+          {/* Chat Messages */}
+          <div
+            className="flex-1 overflow-y-auto p-4 space-y-4 w-full"
+            id="conversation-container"
+            style={{ scrollBehavior: 'smooth' }}
+          >
+            {/* Welcome Message */}
+            {conversations.length === 0 && (
+              <div className="text-center py-10 w-full">
+                <div className="bg-white rounded-lg shadow-sm p-6 w-full">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Welcome to AI Assistant</h3>
+                  <p className="text-gray-600 mb-4">
+                    Ask me anything about your medications, side effects, or general medical questions.
+                  </p>
+                  <p className="text-gray-500 text-sm">
+                    {selectedMedication
+                      ? `Currently selected: ${selectedMedication.name}`
+                      : "Select a medication from above or ask a general question to get started."}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Conversation Messages */}
+            {conversations.map((conv, index) => (
+              <div key={index} className="flex flex-col w-full">
+                {/* User Question */}
+                <div className="flex justify-end mb-2">
+                  <div className="bg-blue-500 text-white rounded-lg rounded-tr-none py-2 px-4 max-w-[80%]">
+                    <p>{conv.question}</p>
+                  </div>
+                </div>
+                
+                {/* AI Response */}
+                <div className="flex justify-start mb-4">
+                  <div className="bg-white rounded-lg rounded-tl-none py-3 px-4 shadow-sm max-w-[80%]">
+                    <div className="prose prose-sm text-gray-700 overflow-y-auto max-h-[300px]">
+                      <ReactMarkdown>{conv.response.text}</ReactMarkdown>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-400">
+                      {conv.response.timestamp.toLocaleTimeString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+            
+            {/* Invisible element to scroll to */}
+            <div ref={conversationEndRef} />
+          </div>
+
+          {/* Input Area */}
+          <div className="p-4 bg-white border-t border-gray-200">
             <QuestionInput
               onSubmit={handleQuestionSubmit}
               isLoading={isLoading}
             />
           </div>
-
-          {/* Conversation History */}
-          <div className="space-y-6">
-            {conversations.map((conv, index) => (
-              <div key={index} className="bg-white rounded-lg shadow-sm p-4">
-                <div className="mb-4">
-                  <p className="font-medium text-gray-900">You asked:</p>
-                  <p className="mt-1 text-gray-600">{conv.question}</p>
-                </div>
-                <div>
-                  <p className="font-medium text-gray-900">Response:</p>
-                  <div className="mt-1 text-gray-600 prose prose-sm max-w-none">
-                    <ReactMarkdown>{conv.response.text}</ReactMarkdown>
-                  </div>
-                  <p className="mt-2 text-sm text-gray-500">
-                    {conv.response.timestamp.toLocaleTimeString()}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Emergency Information Sidebar */}
-        <div className="w-80 border-l border-gray-200 bg-white p-6 overflow-y-auto">
-          <EmergencyPanel />
         </div>
       </div>
     </PageLayout>
