@@ -393,7 +393,7 @@ export default function DashboardPage() {
                 <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
                   <Check className="w-3 h-3 text-blue-600" />
                 </div>
-                <p className="text-sm text-gray-600">Our team will process your prescription within 24 hours</p>
+                <p className="text-sm text-gray-600">Your medications will automatically be updated</p>
               </li>
             </ul>
           </div>
