@@ -7,6 +7,7 @@ import ProgressChart from '@/components/shared/ProgressChart'
 import { Medications, Adherence, DashboardMedication } from '@/lib/types'
 import { Camera, Check } from 'lucide-react'
 import PageLayout from '@/components/PageLayout'
+import handlePrescriptionUpload from '@/components/handlePrescriptionUpload'
 
 interface AdherenceData {
   percentage: number;
