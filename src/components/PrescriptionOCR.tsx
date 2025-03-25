@@ -29,10 +29,9 @@ export class PrescriptionOCR {
   
   private async initWorker() {
     try {
-      // Use newer Tesseract.js initialization pattern
-      this.worker = await createWorker();
-      await this.worker.loadLanguage('eng');
-      await this.worker.initialize('eng');
+      // Updated initialization to match current Tesseract.js API
+      const worker = await createWorker('eng');
+      this.worker = worker;
       return this.worker;
     } catch (error) {
       console.error('Error initializing OCR worker:', error);
@@ -94,6 +93,7 @@ export class PrescriptionOCR {
       /Patient(?:\s+Information)?:[\s\S]*?Name:\s*([^\r\n]+)/i,
       /Name:\s*([^\r\n]+)/i,
       /Patient(?:\'s)?\s+Name:\s*([^\r\n]+)/i,
+      /Patient(?:\s+Information)?:[\s\S]*?\s+([A-Z][a-z]+\s+[A-Z][a-z]+)/i,
       /Patient:\s*([^\r\n]+)/i
     ];
     
@@ -157,104 +157,84 @@ export class PrescriptionOCR {
   private extractMedications(text: string): Medication[] {
     const medications: Medication[] = [];
     
-    // Split the text by lines
-    const lines = text.split('\n');
+    // Regex patterns for numbered medication lists (common in prescriptions)
+    const medListRegex = /(\d+)\.\s+([A-Za-z0-9\-]+(?:\s+[A-Za-z0-9\-]+)*\s+\d+(?:mg|mcg|g|ml)(?:\s+\w+)?)/gi;
+    let medMatch;
     
-    // Patterns to match medication information
-    const medicationPatterns = [
-      // Numbered list format
-      /^\s*(\d+)\.?\s+([A-Za-z]+\s+\d+(?:mg|mcg|g|ml))/i,
-      // Bulleted list format
-      /^\s*[\•\-\*]\s+([A-Za-z]+\s+\d+(?:mg|mcg|g|ml))/i,
-      // Standalone medication name format
-      /^([A-Za-z]+\s+\d+(?:mg|mcg|g|ml))/i
-    ];
-    
-    const dispPattern = /Disp(?:ense)?:\s*(.+?)(?:\r|\n|$)/i;
-    const sigPattern = /Sig(?:nature)?:\s*(.+?)(?:\r|\n|$)/i;
-    const refillsPattern = /Refills:\s*(\d+)/i;
-    
-    let currentMedication: Partial<Medication> | null = null;
-    
-    // Process each line
-    for (let i = 0; i < lines.length; i++) {
-      const trimmedLine = lines[i].trim();
-      if (!trimmedLine) continue;
+    // Try to find numbered medications
+    while ((medMatch = medListRegex.exec(text)) !== null) {
+      const medName = medMatch[2].trim();
       
-      // Check if line starts a new medication
-      let medicationMatch = null;
-      for (const pattern of medicationPatterns) {
-        medicationMatch = trimmedLine.match(pattern);
-        if (medicationMatch) break;
-      }
+      // Find details for this medication
+      const medDetails = this.findMedicationDetails(text, medName);
       
-      if (medicationMatch) {
-        // Save previous medication if exists
-        if (currentMedication && currentMedication.name) {
-          medications.push(currentMedication as Medication);
-        }
-        
-        // Get the medication name from the match
-        const medName = medicationMatch[medicationMatch.length - 1]; // Last capturing group has the name
-        
-        // Start new medication
-        currentMedication = {
-          name: medName.trim(),
-          dosage: this.extractDosage(medName),
-          instructions: '',
-          quantity: '',
-          refills: 0
-        };
-        continue;
-      }
-      
-      // If we have a current medication, extract its details
-      if (currentMedication) {
-        // Extract quantity
-        const dispMatch = trimmedLine.match(dispPattern);
-        if (dispMatch) {
-          currentMedication.quantity = dispMatch[1].trim();
-          continue;
-        }
-        
-        // Extract instructions
-        const sigMatch = trimmedLine.match(sigPattern);
-        if (sigMatch) {
-          currentMedication.instructions = sigMatch[1].trim();
-          continue;
-        }
-        
-        // Extract refills
-        const refillsMatch = trimmedLine.match(refillsPattern);
-        if (refillsMatch) {
-          currentMedication.refills = parseInt(refillsMatch[1]);
-          continue;
-        }
-        
-        // If no specific pattern matched but line contains key instruction words, it's likely instructions
-        if (!currentMedication.instructions && (
-            trimmedLine.toLowerCase().includes("take") || 
-            trimmedLine.toLowerCase().includes("use") ||
-            trimmedLine.toLowerCase().includes("apply"))) {
-          currentMedication.instructions = trimmedLine;
-          continue;
-        }
-        
-        // If line contains "cap" or "tablet" and no quantity, it might be quantity
-        if (!currentMedication.quantity && (
-            trimmedLine.toLowerCase().includes("capsule") || 
-            trimmedLine.toLowerCase().includes("tablet") ||
-            trimmedLine.toLowerCase().includes("cap") || 
-            /\b\d+\s*(?:cap|tab|pill|dose)/i.test(trimmedLine))) {
-          currentMedication.quantity = trimmedLine;
-          continue;
-        }
-      }
+      medications.push({
+        name: medName,
+        dosage: this.extractDosage(medName),
+        instructions: medDetails.instructions,
+        quantity: medDetails.quantity,
+        refills: medDetails.refills
+      });
     }
     
-    // Add the last medication if it exists
-    if (currentMedication && currentMedication.name) {
-      medications.push(currentMedication as Medication);
+    // If no numbered medications found, try alternative approach
+    if (medications.length === 0) {
+      // Split by common medication keywords
+      const medKeywords = ['Disp:', 'Sig:', 'Refills:'];
+      const textLines = text.split('\n');
+      
+      let currentMed: any = null;
+      
+      for (const line of textLines) {
+        const trimmedLine = line.trim();
+        
+        // Check if line contains dosage pattern (e.g., "Cefdinir 300mg capsules")
+        const dosageMatch = trimmedLine.match(/([A-Za-z0-9\-]+(?:\s+[A-Za-z0-9\-]+)*)\s+(\d+(?:mg|mcg|g|ml)(?:\s+\w+)?)/i);
+        
+        if (dosageMatch && !medKeywords.some(keyword => trimmedLine.includes(keyword))) {
+          // Save previous med if exists
+          if (currentMed && currentMed.name) {
+            medications.push(currentMed as Medication);
+          }
+          
+          // Start new medication
+          const fullName = dosageMatch[0].trim();
+          currentMed = {
+            name: fullName,
+            dosage: this.extractDosage(fullName),
+            instructions: '',
+            quantity: '',
+            refills: 0
+          };
+          continue;
+        }
+        
+        // If we have a current medication, extract its details
+        if (currentMed) {
+          // Extract quantity
+          if (trimmedLine.toLowerCase().includes('disp:')) {
+            currentMed.quantity = trimmedLine.replace(/disp(?:ense)?:/i, '').trim();
+          }
+          
+          // Extract instructions
+          else if (trimmedLine.toLowerCase().includes('sig:')) {
+            currentMed.instructions = trimmedLine.replace(/sig(?:nature)?:/i, '').trim();
+          }
+          
+          // Extract refills
+          else if (trimmedLine.toLowerCase().includes('refill')) {
+            const refillMatch = trimmedLine.match(/\d+/);
+            if (refillMatch) {
+              currentMed.refills = parseInt(refillMatch[0]);
+            }
+          }
+        }
+      }
+      
+      // Add the last medication if it exists
+      if (currentMed && currentMed.name) {
+        medications.push(currentMed as Medication);
+      }
     }
     
     // If we still failed to find medications, try detecting known medications
@@ -263,6 +243,52 @@ export class PrescriptionOCR {
     }
     
     return medications;
+  }
+  
+  /**
+   * Find medication details (instructions, quantity, refills) in text
+   */
+  private findMedicationDetails(text: string, medicationName: string): { instructions: string, quantity: string, refills: number } {
+    const medStartIndex = text.indexOf(medicationName);
+    if (medStartIndex === -1) {
+      return { instructions: '', quantity: '', refills: 0 };
+    }
+    
+    // Extract chunk of text following the medication name
+    const endIndex = text.indexOf('\n\n', medStartIndex);
+    const medChunk = endIndex !== -1 
+      ? text.substring(medStartIndex, endIndex)
+      : text.substring(medStartIndex);
+    
+    // Extract instructions (Sig)
+    let instructions = '';
+    const sigMatch = medChunk.match(/Sig(?:nature)?:\s*(.+?)(?:\r|\n|$)/i);
+    if (sigMatch) {
+      instructions = sigMatch[1].trim();
+    } else if (medChunk.includes('Take')) {
+      const takeMatch = medChunk.match(/Take\s+(.+?)(?:\r|\n|$)/i);
+      if (takeMatch) instructions = takeMatch[0].trim();
+    }
+    
+    // Extract quantity (Disp)
+    let quantity = '';
+    const dispMatch = medChunk.match(/Disp(?:ense)?:\s*(.+?)(?:\r|\n|$)/i);
+    if (dispMatch) {
+      quantity = dispMatch[1].trim();
+    } else {
+      // Look for numerical quantities with units
+      const quantityMatch = medChunk.match(/\b(\d+)\s*(?:tablet|capsule|cap|tab)s?\b/i);
+      if (quantityMatch) quantity = quantityMatch[0].trim();
+    }
+    
+    // Extract refills
+    let refills = 0;
+    const refillMatch = medChunk.match(/Refills?:\s*(\d+)/i);
+    if (refillMatch) {
+      refills = parseInt(refillMatch[1]);
+    }
+    
+    return { instructions, quantity, refills };
   }
   
   /**
@@ -420,12 +446,7 @@ export class PrescriptionOCR {
   private validatePrescription(prescription: PrescriptionData): boolean {
     prescription.errorMessages = [];
     
-    // Check patient name (looking for John Doe pattern but more flexible)
-    // if (!prescription.patientName.toLowerCase().includes('john doe')) {
-    //   prescription.errorMessages.push('Patient name is not John Doe');
-    // }
-    
-    // We'll be more flexible in patient name validation for real-world scenarios
+    // Check patient name
     if (!prescription.patientName) {
       prescription.errorMessages.push('Could not detect patient name');
     }
@@ -447,8 +468,7 @@ export class PrescriptionOCR {
       }
     });
     
-    // Even with errors, we consider it valid for demo purposes
-    // This lets us handle partial information
+    // Consider it valid if there are no error messages
     return prescription.errorMessages.length === 0;
   }
   
