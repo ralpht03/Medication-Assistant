@@ -77,10 +77,164 @@ export class PrescriptionOCR {
       // Validate the prescription
       prescriptionData.isValid = this.validatePrescription(prescriptionData);
       
+      // Display the extracted information in the console for debugging
+      this.displayExtractedInfo(prescriptionData);
+      
       return prescriptionData;
     } catch (error) {
       console.error('Error processing prescription:', error);
       throw error;
+    }
+  }
+  
+  /**
+   * Display extracted prescription information for debugging
+   */
+  private displayExtractedInfo(prescription: PrescriptionData): void {
+    console.log("=== EXTRACTED PRESCRIPTION INFORMATION ===");
+    console.log(`Patient: ${prescription.patientName}`);
+    console.log(`Date: ${prescription.date.toLocaleDateString()} (Valid: ${prescription.isDateValid})`);
+    console.log("Medications:");
+    
+    prescription.medications.forEach((med, index) => {
+      console.log(`  [${index + 1}] ${med.name}`);
+      console.log(`      Dosage: ${med.dosage}`);
+      console.log(`      Instructions: ${med.instructions}`);
+      console.log(`      Quantity: ${med.quantity}`);
+      console.log(`      Refills: ${med.refills}`);
+    });
+    
+    console.log(`Validation Status: ${prescription.isValid ? 'Valid' : 'Invalid'}`);
+    if (prescription.errorMessages.length > 0) {
+      console.log("Validation Errors:");
+      prescription.errorMessages.forEach((err, i) => {
+        console.log(`  - ${err}`);
+      });
+    }
+    
+    // Create a DOM element to show the extracted information if we're in a browser
+    if (typeof document !== 'undefined') {
+      // Check if there's already a result container and remove it
+      const existingContainer = document.getElementById('ocr-results-container');
+      if (existingContainer) {
+        existingContainer.remove();
+      }
+      
+      // Create a container for the results
+      const container = document.createElement('div');
+      container.id = 'ocr-results-container';
+      container.style.position = 'fixed';
+      container.style.top = '10px';
+      container.style.right = '10px';
+      container.style.width = '350px';
+      container.style.maxHeight = '80vh';
+      container.style.overflowY = 'auto';
+      container.style.backgroundColor = '#fff';
+      container.style.boxShadow = '0 0 10px rgba(0,0,0,0.2)';
+      container.style.borderRadius = '8px';
+      container.style.padding = '16px';
+      container.style.zIndex = '9999';
+      container.style.fontSize = '14px';
+      
+      // Add a title
+      const title = document.createElement('h3');
+      title.textContent = 'Extracted Prescription Data';
+      title.style.marginTop = '0';
+      title.style.marginBottom = '8px';
+      title.style.fontSize = '16px';
+      title.style.fontWeight = 'bold';
+      container.appendChild(title);
+      
+      // Add close button
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = 'X';
+      closeBtn.style.position = 'absolute';
+      closeBtn.style.top = '8px';
+      closeBtn.style.right = '8px';
+      closeBtn.style.backgroundColor = '#f3f4f6';
+      closeBtn.style.border = 'none';
+      closeBtn.style.borderRadius = '4px';
+      closeBtn.style.cursor = 'pointer';
+      closeBtn.style.width = '24px';
+      closeBtn.style.height = '24px';
+      closeBtn.onclick = () => container.remove();
+      container.appendChild(closeBtn);
+      
+      // Add patient info
+      const patientInfo = document.createElement('div');
+      patientInfo.innerHTML = `<strong>Patient:</strong> ${prescription.patientName}<br>
+                               <strong>Date:</strong> ${prescription.date.toLocaleDateString()} 
+                               ${prescription.isDateValid ? '✓' : '❌'}`;
+      container.appendChild(patientInfo);
+      
+      // Add medications
+      const medTitle = document.createElement('div');
+      medTitle.innerHTML = '<strong>Medications:</strong>';
+      medTitle.style.marginTop = '12px';
+      medTitle.style.marginBottom = '8px';
+      container.appendChild(medTitle);
+      
+      if (prescription.medications.length === 0) {
+        const noMeds = document.createElement('div');
+        noMeds.textContent = 'No medications detected';
+        noMeds.style.color = '#ef4444';
+        container.appendChild(noMeds);
+      } else {
+        prescription.medications.forEach((med, i) => {
+          const medContainer = document.createElement('div');
+          medContainer.style.backgroundColor = '#f3f4f6';
+          medContainer.style.borderRadius = '6px';
+          medContainer.style.padding = '10px';
+          medContainer.style.marginBottom = '8px';
+          
+          medContainer.innerHTML = `
+            <div style="font-weight: bold; margin-bottom: 4px;">${i + 1}. ${med.name}</div>
+            <div><span style="color:#4b5563">Dosage:</span> ${med.dosage || 'Not detected'}</div>
+            <div><span style="color:#4b5563">Instructions:</span> ${med.instructions || 'Not detected'}</div>
+            <div><span style="color:#4b5563">Quantity:</span> ${med.quantity || 'Not detected'}</div>
+            <div><span style="color:#4b5563">Refills:</span> ${med.refills}</div>
+          `;
+          
+          container.appendChild(medContainer);
+        });
+      }
+      
+      // Add validation status
+      const validationStatus = document.createElement('div');
+      validationStatus.style.marginTop = '12px';
+      validationStatus.style.fontWeight = 'bold';
+      validationStatus.style.color = prescription.isValid ? '#10b981' : '#ef4444';
+      validationStatus.textContent = prescription.isValid ? '✓ Valid Prescription' : '❌ Invalid Prescription';
+      container.appendChild(validationStatus);
+      
+      // Add error messages if any
+      if (prescription.errorMessages.length > 0) {
+        const errorsContainer = document.createElement('div');
+        errorsContainer.style.marginTop = '8px';
+        
+        const errorsTitle = document.createElement('div');
+        errorsTitle.textContent = 'Issues:';
+        errorsTitle.style.fontWeight = 'bold';
+        errorsTitle.style.marginBottom = '4px';
+        errorsContainer.appendChild(errorsTitle);
+        
+        const errorsList = document.createElement('ul');
+        errorsList.style.margin = '0';
+        errorsList.style.paddingLeft = '20px';
+        
+        prescription.errorMessages.forEach(err => {
+          const errorItem = document.createElement('li');
+          errorItem.textContent = err;
+          errorItem.style.color = '#ef4444';
+          errorsList.appendChild(errorItem);
+        });
+        
+        errorsContainer.appendChild(errorsList);
+        container.appendChild(errorsContainer);
+      }
+      
+      // Add to document
+      document.body.appendChild(container);
     }
   }
   
