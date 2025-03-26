@@ -3,6 +3,7 @@
 import AdminDashboardOverview from "@/components/AdminDashboardOverview"
 import PatientListTable from "@/components/PatientListTable"
 import PageLayout from "@/components/PageLayout"
+import { handlePrescriptionUpload } from '@/components/handlePrescriptionUpload'
 
 export default function AdminDashboard() {
   return (

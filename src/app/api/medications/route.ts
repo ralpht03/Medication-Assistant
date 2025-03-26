@@ -18,6 +18,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const patientId = searchParams.get('patientId');
+    const medicationId = searchParams.get('medicationId');
 
     if (!patientId) {
       return NextResponse.json({ error: 'Patient ID is required' }, { status: 400 });
@@ -29,7 +30,20 @@ export async function GET(request: Request) {
       tableName: process.env.AZURE_STORAGE_TABLE_NAME
     });
 
-    console.log('Fetching medications for patient:', patientId);
+    // If medicationId is provided, fetch a single medication
+    if (medicationId) {
+      console.log(`Fetching medication ${medicationId} for patient: ${patientId}`);
+      const medication = await medicationService.getMedicationById(patientId, medicationId);
+      
+      if (!medication) {
+        return NextResponse.json({ error: 'Medication not found' }, { status: 404 });
+      }
+      
+      return NextResponse.json({ medication });
+    }
+
+    // Otherwise, fetch all medications for the patient
+    console.log('Fetching all medications for patient:', patientId);
     const medications = await medicationService.getMedications(patientId);
     console.log('Retrieved medications:', medications);
 
@@ -75,8 +89,13 @@ export async function POST(request: Request) {
       lastFilled
     } = body;
 
+    // Ensure patientId is provided for all operations
+    if (!patientId) {
+      return NextResponse.json({ error: 'Patient ID is required' }, { status: 400 });
+    }
+
     // Handle direct medication creation (from medication assignment modal)
-    if (!action && patientId && name && dosage && frequency && route && startDate && endDate && verificationMethod) {
+    if (!action && name && dosage && frequency && route && startDate && endDate && verificationMethod) {
       // Validate dates
       const start = new Date(startDate);
       const end = new Date(endDate);
@@ -106,19 +125,15 @@ export async function POST(request: Request) {
         time: '08:00' // Default time
       };
       
-      await medicationService.addMedication(newMedication, patientId);
+      const createdMedication = await medicationService.addMedication(newMedication, patientId);
       return NextResponse.json({
         message: 'Medication created successfully',
-        medication: {
-          ...newMedication,
-          patientId,
-          status: 'pending'
-        }
+        medication: createdMedication
       });
     }
     
     // Handle legacy medication creation if no action is specified
-    if (!action && patientId && medication?.name && medication?.dosage) {
+    if (!action && medication?.name && medication?.dosage) {
       const newMedication = {
         name: medication.name,
         dosage: medication.dosage,
@@ -127,62 +142,121 @@ export async function POST(request: Request) {
         instructions: medication.instructions || ''
       };
       
-      await medicationService.addMedication(newMedication, patientId);
+      const createdMedication = await medicationService.addMedication(newMedication, patientId);
       return NextResponse.json({
         message: 'Medication created successfully',
-        medication: {
-          ...newMedication,
-          patientId,
-          status: 'pending'
-        }
+        medication: createdMedication
       });
     }
 
-    console.log('Processing action:', action, 'for medication:', medication?.name);
+    console.log('Processing action:', action);
 
-    let result;
+    // Handle different medication service actions
     switch (action) {
+      // CRUD Operations
+      case 'create':
+        if (!medication) {
+          return NextResponse.json({ error: 'Medication data is required' }, { status: 400 });
+        }
+        const createdMedication = await medicationService.addMedication(medication, patientId);
+        return NextResponse.json({ 
+          message: 'Medication created successfully',
+          medication: createdMedication 
+        });
+
+      case 'update':
+        if (!medicationId) {
+          return NextResponse.json({ error: 'Medication ID is required' }, { status: 400 });
+        }
+        if (!medication) {
+          return NextResponse.json({ error: 'Medication updates are required' }, { status: 400 });
+        }
+        const updatedMedication = await medicationService.updateMedication(patientId, medicationId, medication);
+        if (!updatedMedication) {
+          return NextResponse.json({ error: 'Medication not found' }, { status: 404 });
+        }
+        return NextResponse.json({ 
+          message: 'Medication updated successfully',
+          medication: updatedMedication 
+        });
+
+      case 'delete':
+        if (!medicationId) {
+          return NextResponse.json({ error: 'Medication ID is required' }, { status: 400 });
+        }
+        const deleted = await medicationService.deleteMedication(patientId, medicationId);
+        if (!deleted) {
+          return NextResponse.json({ error: 'Medication not found' }, { status: 404 });
+        }
+        return NextResponse.json({ message: 'Medication deleted successfully' });
+
+      case 'deleteAll':
+        await medicationService.deleteAllMedications(patientId);
+        return NextResponse.json({ message: 'All medications deleted successfully' });
+
+      // OpenAI Service Actions
       case 'info':
-        result = await openAIService.getMedicationInfo(medication.name);
-        return NextResponse.json({ info: result });
+        if (!medication?.name) {
+          return NextResponse.json({ error: 'Medication name is required' }, { status: 400 });
+        }
+        const infoResult = await openAIService.getMedicationInfo(medication.name);
+        return NextResponse.json({ info: infoResult });
 
       case 'sideEffects':
-        result = await openAIService.getSideEffects(medication.name);
-        return NextResponse.json({ effects: result });
+        if (!medication?.name) {
+          return NextResponse.json({ error: 'Medication name is required' }, { status: 400 });
+        }
+        const effectsResult = await openAIService.getSideEffects(medication.name);
+        return NextResponse.json({ effects: effectsResult });
 
       case 'interactions':
         const medications = body.medications || await medicationService.getMedications(patientId);
-        result = await openAIService.checkInteractions(medications);
-        return NextResponse.json({ interactions: result });
+        const interactionsResult = await openAIService.checkInteractions(medications);
+        return NextResponse.json({ interactions: interactionsResult });
 
       case 'missedDose':
-        result = await openAIService.handleMissedDose(medication);
-        return NextResponse.json({ guidance: result });
+        if (!medication) {
+          return NextResponse.json({ error: 'Medication data is required' }, { status: 400 });
+        }
+        const missedDoseResult = await openAIService.handleMissedDose(medication);
+        return NextResponse.json({ guidance: missedDoseResult });
 
       case 'emergency':
-        result = await openAIService.handleEmergencyQuestion(question, medication);
-        return NextResponse.json({ response: result });
+        if (!question) {
+          return NextResponse.json({ error: 'Question is required' }, { status: 400 });
+        }
+        const emergencyResult = await openAIService.handleEmergencyQuestion(question, medication);
+        return NextResponse.json({ response: emergencyResult });
 
       case 'schedule':
         const medsForSchedule = body.medications || await medicationService.getMedications(patientId);
-        result = await openAIService.getDailySchedule(medsForSchedule);
-        return NextResponse.json({ schedule: result });
+        const scheduleResult = await openAIService.getDailySchedule(medsForSchedule);
+        return NextResponse.json({ schedule: scheduleResult });
         
       case 'generalInfo':
         // Handle general medical questions without medication context
-        result = await openAIService.getGeneralMedicalInfo(question);
-        return NextResponse.json({ info: result });
+        if (!question) {
+          return NextResponse.json({ error: 'Question is required' }, { status: 400 });
+        }
+        const generalInfoResult = await openAIService.getGeneralMedicalInfo(question);
+        return NextResponse.json({ info: generalInfoResult });
         
       case 'generalQuestion':
         // Handle any question without a specific category
-        result = await openAIService.answerGeneralQuestion(question);
-        return NextResponse.json({ response: result });
+        if (!question) {
+          return NextResponse.json({ error: 'Question is required' }, { status: 400 });
+        }
+        const generalQuestionResult = await openAIService.answerGeneralQuestion(question);
+        return NextResponse.json({ response: generalQuestionResult });
         
       case 'allMedications':
         // Handle questions about all medications
+        if (!question) {
+          return NextResponse.json({ error: 'Question is required' }, { status: 400 });
+        }
         const allMeds = body.medications || await medicationService.getMedications(patientId);
-        result = await openAIService.getAllMedicationsInfo(question, allMeds);
-        return NextResponse.json({ response: result });
+        const allMedsResult = await openAIService.getAllMedicationsInfo(question, allMeds);
+        return NextResponse.json({ response: allMedsResult });
 
       default:
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
@@ -199,6 +273,93 @@ export async function POST(request: Request) {
     }
     return NextResponse.json(
       { error: 'Failed to process request', details: (error as Error).message },
+      { status: 500 }
+    );
+  }
+}
+
+// Add PUT method for updating medications
+export async function PUT(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const patientId = searchParams.get('patientId');
+    const medicationId = searchParams.get('medicationId');
+    
+    if (!patientId || !medicationId) {
+      return NextResponse.json(
+        { error: 'Patient ID and Medication ID are required' }, 
+        { status: 400 }
+      );
+    }
+    
+    const body = await request.json();
+    const updatedMedication = await medicationService.updateMedication(patientId, medicationId, body);
+    
+    if (!updatedMedication) {
+      return NextResponse.json({ error: 'Medication not found' }, { status: 404 });
+    }
+    
+    return NextResponse.json({
+      message: 'Medication updated successfully',
+      medication: updatedMedication
+    });
+  } catch (error) {
+    console.error('Error updating medication:', error);
+    if (error instanceof Error) {
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+    }
+    return NextResponse.json(
+      { error: 'Failed to update medication', details: (error as Error).message },
+      { status: 500 }
+    );
+  }
+}
+
+// Add DELETE method for deleting medications
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const patientId = searchParams.get('patientId');
+    const medicationId = searchParams.get('medicationId');
+    const deleteAll = searchParams.get('deleteAll');
+    
+    if (!patientId) {
+      return NextResponse.json({ error: 'Patient ID is required' }, { status: 400 });
+    }
+    
+    // Delete all medications for a patient
+    if (deleteAll === 'true') {
+      await medicationService.deleteAllMedications(patientId);
+      return NextResponse.json({ message: 'All medications deleted successfully' });
+    }
+    
+    // Delete a specific medication
+    if (!medicationId) {
+      return NextResponse.json({ error: 'Medication ID is required' }, { status: 400 });
+    }
+    
+    const deleted = await medicationService.deleteMedication(patientId, medicationId);
+    
+    if (!deleted) {
+      return NextResponse.json({ error: 'Medication not found' }, { status: 404 });
+    }
+    
+    return NextResponse.json({ message: 'Medication deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting medication:', error);
+    if (error instanceof Error) {
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+    }
+    return NextResponse.json(
+      { error: 'Failed to delete medication', details: (error as Error).message },
       { status: 500 }
     );
   }

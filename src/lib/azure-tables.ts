@@ -213,31 +213,6 @@ export class MedicationService {
     this.tableClient = createTableClient(DEFAULT_MEDICATIONS_TABLE);
   }
 
-  async getMedications(patientId: string): Promise<Medication[]> {
-    try {
-      const filter = odata`PartitionKey eq ${patientId}`;
-      const entities = this.tableClient.listEntities<Medication>({ queryOptions: { filter } });
-
-      const medications: Medication[] = [];
-      for await (const entity of entities) {
-        medications.push({
-          partitionKey: entity.partitionKey as string,
-          rowKey: entity.rowKey as string,
-          name: entity.name as string,
-          dosage: entity.dosage as string,
-          frequency: entity.frequency as string,
-          time: entity.time as string,
-          instructions: entity.instructions as string
-        });
-      }
-
-      return medications;
-    } catch (error) {
-      console.error('Error fetching medications:', error);
-      throw error;
-    }
-  }
-
   async createTable(): Promise<void> {
     try {
       await this.tableClient.createTable();
@@ -251,22 +226,112 @@ export class MedicationService {
     }
   }
 
-  async addMedication(medication: Omit<Medication, 'partitionKey' | 'rowKey'>, patientId: string): Promise<void> {
+  // Get all medications for a patient
+  async getMedications(patientId: string): Promise<Medication[]> {
+    try {
+      const filter = odata`PartitionKey eq ${patientId}`;
+      const entities = this.tableClient.listEntities<Medication>({ queryOptions: { filter } });
+
+      const medications: Medication[] = [];
+      for await (const entity of entities) {
+        medications.push(this.transformEntityToMedication(entity));
+      }
+
+      return medications;
+    } catch (error) {
+      console.error('Error fetching medications:', error);
+      throw error;
+    }
+  }
+
+  // Get a single medication by ID
+  async getMedicationById(patientId: string, medicationId: string): Promise<Medication | null> {
+    try {
+      const entity = await this.tableClient.getEntity<Medication>(patientId, medicationId);
+      return this.transformEntityToMedication(entity);
+    } catch (error: any) {
+      if (error.statusCode === 404) {
+        console.log(`Medication with ID ${medicationId} not found for patient ${patientId}`);
+        return null;
+      }
+      console.error(`Error fetching medication ${medicationId}:`, error);
+      throw error;
+    }
+  }
+
+  // Add a new medication
+  async addMedication(medication: Omit<Medication, 'partitionKey' | 'rowKey'>, patientId: string): Promise<Medication> {
+    const medicationId = `med-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const entity = {
       partitionKey: patientId,
-      rowKey: `med-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      ...medication
+      rowKey: medicationId,
+      ...medication,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
 
     try {
       await this.tableClient.createEntity(entity);
-      console.log(`Added medication: ${medication.name}`);
+      console.log(`Added medication: ${medication.name} with ID: ${medicationId}`);
+      return this.transformEntityToMedication(entity);
     } catch (error) {
       console.error(`Error adding medication ${medication.name}:`, error);
       throw error;
     }
   }
 
+  // Update an existing medication
+  async updateMedication(
+    patientId: string, 
+    medicationId: string, 
+    updates: Partial<Omit<Medication, 'partitionKey' | 'rowKey'>>
+  ): Promise<Medication | null> {
+    try {
+      // First, get the existing medication
+      const existingMedication = await this.getMedicationById(patientId, medicationId);
+      
+      if (!existingMedication) {
+        console.log(`Medication with ID ${medicationId} not found for patient ${patientId}`);
+        return null;
+      }
+      
+      // Create updated entity
+      const updatedEntity = {
+        partitionKey: patientId,
+        rowKey: medicationId,
+        ...existingMedication,
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+      
+      // Update the entity in Azure Table Storage
+      await this.tableClient.updateEntity(updatedEntity, "Merge");
+      console.log(`Updated medication: ${medicationId}`);
+      
+      return this.transformEntityToMedication(updatedEntity);
+    } catch (error) {
+      console.error(`Error updating medication ${medicationId}:`, error);
+      throw error;
+    }
+  }
+
+  // Delete a single medication
+  async deleteMedication(patientId: string, medicationId: string): Promise<boolean> {
+    try {
+      await this.tableClient.deleteEntity(patientId, medicationId);
+      console.log(`Deleted medication: ${medicationId} for patient: ${patientId}`);
+      return true;
+    } catch (error: any) {
+      if (error.statusCode === 404) {
+        console.log(`Medication with ID ${medicationId} not found for patient ${patientId}`);
+        return false;
+      }
+      console.error(`Error deleting medication ${medicationId}:`, error);
+      throw error;
+    }
+  }
+
+  // Delete all medications for a patient
   async deleteAllMedications(patientId: string): Promise<void> {
     try {
       const filter = odata`PartitionKey eq ${patientId}`;
@@ -282,5 +347,28 @@ export class MedicationService {
       console.error('Error deleting medications:', error);
       throw error;
     }
+  }
+
+  // Helper method to transform entity to medication
+  private transformEntityToMedication(entity: any): Medication {
+    return {
+      partitionKey: entity.partitionKey,
+      rowKey: entity.rowKey,
+      name: entity.name,
+      dosage: entity.dosage,
+      frequency: entity.frequency,
+      time: entity.time,
+      instructions: entity.instructions,
+      startDate: entity.startDate,
+      endDate: entity.endDate,
+      verificationMethod: entity.verificationMethod,
+      prescribingDoctor: entity.prescribingDoctor,
+      pharmacy: entity.pharmacy,
+      notes: entity.notes,
+      refillsRemaining: entity.refillsRemaining,
+      lastFilled: entity.lastFilled,
+      createdAt: entity.createdAt,
+      updatedAt: entity.updatedAt
+    };
   }
 }
