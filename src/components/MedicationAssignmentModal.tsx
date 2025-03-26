@@ -1,418 +1,394 @@
-import { useState, FormEvent } from 'react'
-import { X } from 'lucide-react'
+import { useState } from "react"
+import { X, AlertCircle, CheckCircle, Loader2 } from "lucide-react"
 
 interface Patient {
   id: string
-  name: string
-  lastMedication: string
-  nextScheduled: string
-  adherenceRate: number
-  status: "normal" | "missed" | "overdose"
+  firstName: string
+  lastName: string
+  email: string
 }
 
 interface MedicationAssignmentModalProps {
   patient: Patient
   onClose: () => void
-  onMedicationAssigned?: () => void
+  onMedicationAssigned: () => void
 }
 
-const MedicationAssignmentModal = ({ patient, onClose, onMedicationAssigned }: MedicationAssignmentModalProps) => {
+const MedicationAssignmentModal = ({
+  patient,
+  onClose,
+  onMedicationAssigned
+}: MedicationAssignmentModalProps) => {
   // Form state
-  const [name, setName] = useState('')
-  const [dosage, setDosage] = useState('')
-  const [frequency, setFrequency] = useState('')
-  const [customFrequency, setCustomFrequency] = useState('')
-  const [route, setRoute] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [verificationMethod, setVerificationMethod] = useState('')
-  
-  // Optional fields
-  const [prescribingDoctor, setPrescribingDoctor] = useState('')
-  const [pharmacy, setPharmacy] = useState('')
-  const [notes, setNotes] = useState('')
-  const [refillsRemaining, setRefillsRemaining] = useState('')
-  const [lastFilled, setLastFilled] = useState('')
-  
-  // Form state
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-  
-  // Validation errors
-  const [dateError, setDateError] = useState('')
-  
-  const validateForm = () => {
-    // Reset errors
-    setError('')
-    setDateError('')
-    
-    // Check required fields
-    if (!name || !dosage || !frequency || !route || !startDate || !endDate || !verificationMethod) {
-      setError('Please fill in all required fields')
-      return false
-    }
-    
-    // Check if custom frequency has a value
-    if (frequency === 'custom' && !customFrequency) {
-      setError('Please provide a custom frequency description')
-      return false
-    }
-    
-    // Validate dates
-    const start = new Date(startDate)
-    const end = new Date(endDate)
-    if (end < start) {
-      setDateError('End date must be after start date')
-      return false
-    }
-    
-    return true
+  const [name, setName] = useState("")
+  const [dosage, setDosage] = useState("")
+  const [frequency, setFrequency] = useState("daily")
+  const [route, setRoute] = useState("oral")
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
+  const [verificationMethod, setVerificationMethod] = useState("manual-entry")
+  const [prescribingDoctor, setPrescribingDoctor] = useState("")
+  const [pharmacy, setPharmacy] = useState("")
+  const [notes, setNotes] = useState("")
+  const [refillsRemaining, setRefillsRemaining] = useState<number>(0)
+  const [timeOfDay, setTimeOfDay] = useState<string[]>([])
+
+  // UI state
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  // Time options
+  const timeOptions = [
+    { id: "morning", label: "Morning (8:00 AM)" },
+    { id: "noon", label: "Noon (12:00 PM)" },
+    { id: "afternoon", label: "Afternoon (2:00 PM)" },
+    { id: "evening", label: "Evening (6:00 PM)" },
+    { id: "night", label: "Night (10:00 PM)" }
+  ]
+
+  // Toggle time selection
+  const toggleTimeSelection = (timeId: string) => {
+    setTimeOfDay(prev => 
+      prev.includes(timeId)
+        ? prev.filter(t => t !== timeId)
+        : [...prev, timeId]
+    )
   }
-  
-  const handleSubmit = async (e: FormEvent) => {
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (!validateForm()) {
-      return
-    }
-    
-    setIsSubmitting(true)
-    
+
     try {
-      console.log('Assigning medication to patient:', patient);
-      
+      setLoading(true)
+      setError(null)
+
+      // Validate required fields
+      if (!name || !dosage || !frequency || !startDate || !endDate || !verificationMethod || timeOfDay.length === 0) {
+        throw new Error("Please fill in all required fields")
+      }
+
+      // Format time field as expected by backend
+      const formattedTime = timeOfDay.join(", ")
+
+      // Prepare medication data
       const medicationData = {
         patientId: patient.id,
         name,
         dosage,
-        frequency: frequency === 'custom' ? `custom:${customFrequency}` : frequency,
+        frequency,
         route,
         startDate,
         endDate,
+        time: formattedTime,
         verificationMethod,
-        prescribingDoctor,
-        pharmacy,
-        notes,
-        refillsRemaining: refillsRemaining ? parseInt(refillsRemaining) : 0,
-        lastFilled: lastFilled || null,
-        // Add time field for scheduling
-        time: '08:00', // Default to 8 AM
-      };
-      
-      console.log('Medication data being sent:', medicationData);
-      
+        prescribingDoctor: prescribingDoctor || undefined,
+        pharmacy: pharmacy || undefined,
+        notes: notes || undefined,
+        refillsRemaining: refillsRemaining || 0,
+        lastFilled: startDate // Initially set lastFilled to startDate
+      }
+
+      // Send to API
       const response = await fetch('/api/medications', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(medicationData),
-      });
-      
-      // Log the raw response for debugging
-      const responseText = await response.text();
-      console.log('Raw API response:', responseText);
-      
-      // Parse the response text back to JSON
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (e) {
-        console.error('Error parsing response JSON:', e);
-        throw new Error('Invalid JSON response from API');
-      }
-      
+      })
+
       if (!response.ok) {
-        console.error('API error response:', data);
-        throw new Error(data.error || 'Failed to create medication');
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to assign medication')
       }
+
+      // Show success message
+      setSuccess(true)
       
-      console.log('Medication assigned successfully:', data);
+      // Clear form
+      setTimeout(() => {
+        onMedicationAssigned()
+      }, 1500)
       
-      setSuccess('Medication assigned successfully')
-      
-      // Reset form
-      setName('')
-      setDosage('')
-      setFrequency('')
-      setCustomFrequency('')
-      setRoute('')
-      setStartDate('')
-      setEndDate('')
-      setVerificationMethod('')
-      setPrescribingDoctor('')
-      setPharmacy('')
-      setNotes('')
-      setRefillsRemaining('')
-      setLastFilled('')
-      
-      // Call the callback if provided
-      if (onMedicationAssigned) {
-        // Wait a moment to show the success message before closing
-        setTimeout(() => {
-          onMedicationAssigned()
-        }, 1500)
-      }
-      
-    } catch (err: any) {
-      setError(err.message || 'An error occurred')
+    } catch (err) {
+      console.error('Error assigning medication:', err)
+      setError(err instanceof Error ? err.message : 'An unknown error occurred')
     } finally {
-      setIsSubmitting(false)
+      setLoading(false)
     }
   }
-  
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-xl font-semibold text-gray-800">
-            Assign Medication for {patient.name}
-          </h2>
-          <button 
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            <X className="h-6 w-6" />
-          </button>
-        </div>
-        
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+      <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-semibold text-gray-900">
+              Assign Medication to {patient.firstName} {patient.lastName}
+            </h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 focus:outline-none"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+
           {error && (
-            <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">
-              {error}
+            <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 flex items-start">
+              <AlertCircle className="h-5 w-5 text-red-500 mr-3 mt-0.5" />
+              <div className="text-sm text-red-700">{error}</div>
             </div>
           )}
-          
-          {success && (
-            <div className="mb-4 p-3 bg-green-100 text-green-700 rounded">
-              {success}
+
+          {success ? (
+            <div className="p-8 text-center">
+              <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Medication Assigned Successfully</h3>
+              <p className="text-gray-600">
+                The medication has been assigned to {patient.firstName} {patient.lastName}.
+              </p>
             </div>
-          )}
-          
-          <form onSubmit={handleSubmit}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              {/* Required Fields */}
-              <div className="col-span-2">
-                <h3 className="text-lg font-medium mb-2">Medication Details</h3>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Medication Name *
-                </label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Dosage *
-                </label>
-                <input
-                  type="text"
-                  value={dosage}
-                  onChange={(e) => setDosage(e.target.value)}
-                  className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Frequency *
-                </label>
-                <div className="grid grid-cols-1 gap-2">
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Medication Name */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="medication-name">
+                    Medication Name*
+                  </label>
+                  <input
+                    id="medication-name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    placeholder="e.g., Lisinopril"
+                    required
+                  />
+                </div>
+
+                {/* Dosage */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="dosage">
+                    Dosage*
+                  </label>
+                  <input
+                    id="dosage"
+                    type="text"
+                    value={dosage}
+                    onChange={(e) => setDosage(e.target.value)}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    placeholder="e.g., 10mg"
+                    required
+                  />
+                </div>
+
+                {/* Frequency */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="frequency">
+                    Frequency*
+                  </label>
                   <select
+                    id="frequency"
                     value={frequency}
                     onChange={(e) => setFrequency(e.target.value)}
-                    className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                     required
                   >
-                    <option value="">Select frequency</option>
                     <option value="daily">Daily</option>
                     <option value="twice-daily">Twice Daily</option>
                     <option value="three-times-daily">Three Times Daily</option>
-                    <option value="four-times-daily">Four Times Daily</option>
-                    <option value="every-other-day">Every Other Day</option>
                     <option value="weekly">Weekly</option>
-                    <option value="biweekly">Biweekly</option>
-                    <option value="monthly">Monthly</option>
                     <option value="as-needed">As Needed</option>
-                    <option value="custom">Custom</option>
                   </select>
-                  
-                  {frequency === 'custom' && (
-                    <div className="mt-2">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Custom Frequency Description
-                      </label>
-                      <input
-                        type="text"
-                        value={customFrequency}
-                        onChange={(e) => setCustomFrequency(e.target.value)}
-                        placeholder="E.g., Every Monday and Thursday"
-                        className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
-                        required={frequency === 'custom'}
-                      />
-                    </div>
-                  )}
+                </div>
+
+                {/* Route */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="route">
+                    Route*
+                  </label>
+                  <select
+                    id="route"
+                    value={route}
+                    onChange={(e) => setRoute(e.target.value)}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    required
+                  >
+                    <option value="oral">Oral</option>
+                    <option value="topical">Topical</option>
+                    <option value="injection">Injection</option>
+                    <option value="inhaled">Inhaled</option>
+                    <option value="sublingual">Sublingual</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+
+                {/* Start Date */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="start-date">
+                    Start Date*
+                  </label>
+                  <input
+                    id="start-date"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    required
+                  />
+                </div>
+
+                {/* End Date */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="end-date">
+                    End Date*
+                  </label>
+                  <input
+                    id="end-date"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    required
+                  />
+                </div>
+
+                {/* Verification Method */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="verification-method">
+                    Verification Method*
+                  </label>
+                  <select
+                    id="verification-method"
+                    value={verificationMethod}
+                    onChange={(e) => setVerificationMethod(e.target.value)}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    required
+                  >
+                    <option value="manual-entry">Manual Entry</option>
+                    <option value="live-feed">Live Feed</option>
+                    <option value="patient-helper">Patient Helper</option>
+                  </select>
+                </div>
+
+                {/* Refills Remaining */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="refills">
+                    Refills Remaining
+                  </label>
+                  <input
+                    id="refills"
+                    type="number"
+                    min="0"
+                    value={refillsRemaining}
+                    onChange={(e) => setRefillsRemaining(parseInt(e.target.value))}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  />
+                </div>
+
+                {/* Prescribing Doctor */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="prescribing-doctor">
+                    Prescribing Doctor
+                  </label>
+                  <input
+                    id="prescribing-doctor"
+                    type="text"
+                    value={prescribingDoctor}
+                    onChange={(e) => setPrescribingDoctor(e.target.value)}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    placeholder="e.g., Dr. Smith"
+                  />
+                </div>
+
+                {/* Pharmacy */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="pharmacy">
+                    Pharmacy
+                  </label>
+                  <input
+                    id="pharmacy"
+                    type="text"
+                    value={pharmacy}
+                    onChange={(e) => setPharmacy(e.target.value)}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    placeholder="e.g., CVS Pharmacy"
+                  />
                 </div>
               </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Route of Administration *
+
+              {/* Time of Day Checkboxes */}
+              <div className="mt-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Time of Day*
                 </label>
-                <select
-                  value={route}
-                  onChange={(e) => setRoute(e.target.value)}
-                  className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
-                  required
-                >
-                  <option value="">Select route</option>
-                  <option value="oral">Oral</option>
-                  <option value="topical">Topical</option>
-                  <option value="injection">Injection</option>
-                  <option value="inhalation">Inhalation</option>
-                </select>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {timeOptions.map((time) => (
+                    <div
+                      key={time.id}
+                      className={`p-3 rounded-md border cursor-pointer flex items-center ${
+                        timeOfDay.includes(time.id)
+                          ? "bg-blue-50 border-blue-500"
+                          : "border-gray-300 hover:bg-gray-50"
+                      }`}
+                      onClick={() => toggleTimeSelection(time.id)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={timeOfDay.includes(time.id)}
+                        onChange={() => toggleTimeSelection(time.id)}
+                        className="h-4 w-4 text-blue-600 rounded"
+                      />
+                      <span className="ml-2 text-sm">{time.label}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Start Date *
-                </label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  End Date *
-                </label>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
-                {dateError && (
-                  <p className="mt-1 text-sm text-red-600">{dateError}</p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Verification Method *
-                </label>
-                <select
-                  value={verificationMethod}
-                  onChange={(e) => setVerificationMethod(e.target.value)}
-                  className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
-                  required
-                >
-                  <option value="">Select verification method</option>
-                  <option value="manual-entry">Manual Entry</option>
-                  <option value="live-feed">Live Feed Verification</option>
-                  <option value="patient-helper">Patient Helper Verification</option>
-                </select>
-              </div>
-              
-              {/* Optional Fields */}
-              <div className="col-span-2 mt-4">
-                <h3 className="text-lg font-medium mb-2">Additional Information (Optional)</h3>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Prescribing Doctor
-                </label>
-                <input
-                  type="text"
-                  value={prescribingDoctor}
-                  onChange={(e) => setPrescribingDoctor(e.target.value)}
-                  className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Pharmacy
-                </label>
-                <input
-                  type="text"
-                  value={pharmacy}
-                  onChange={(e) => setPharmacy(e.target.value)}
-                  className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Refills Remaining
-                </label>
-                <input
-                  type="number"
-                  value={refillsRemaining}
-                  onChange={(e) => setRefillsRemaining(e.target.value)}
-                  min="0"
-                  className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Last Filled Date
-                </label>
-                <input
-                  type="date"
-                  value={lastFilled}
-                  onChange={(e) => setLastFilled(e.target.value)}
-                  className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Notes
+
+              {/* Notes */}
+              <div className="mt-6">
+                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="notes">
+                  Additional Notes
                 </label>
                 <textarea
+                  id="notes"
+                  rows={3}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  rows={3}
-                  className="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  placeholder="Any additional instructions or notes about this medication"
                 />
               </div>
-            </div>
-            
-            <div className="flex justify-end space-x-3 mt-6">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-              >
-                {isSubmitting ? 'Saving...' : 'Save Medication'}
-              </button>
-            </div>
-          </form>
+
+              {/* Submit Button */}
+              <div className="mt-8 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="mr-3 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                      Assigning...
+                    </>
+                  ) : (
+                    "Assign Medication"
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     </div>
