@@ -104,6 +104,8 @@ medication-assistant/
 - Medication tracking and scheduling
 - Adherence monitoring
 - Medication verification
+- Admin-to-patient medication assignment
+- Medication adherence tracking
 
 ### Invitation System
 - Email-based invitations for new users
@@ -127,6 +129,19 @@ To run tests:
 ```bash
 npm test
 ```
+
+## Documentation
+
+The project includes comprehensive documentation in the `docs/` directory:
+
+- [Data Models](docs/data-models.md) - Database schema and entity relationships
+- [Invitation System Implementation](docs/invitation-system-implementation.md) - How the invitation system works
+- [Azure Tables Structure](docs/azure-tables-structure.md) - Azure Table Storage schema
+- [Medication Assignment Flow](docs/medication-assignment-flow.md) - How medications are assigned from admins to patients
+- [AI Assistant Functionality](docs/ai-assistant-functionality.md) - How the AI Assistant works and answers questions
+- [Azure Communication Services Setup](docs/azure-communication-services-setup.md) - Setting up email services
+
+Additionally, the `src/scripts/` directory contains utility scripts with their own [documentation](src/scripts/README.md).
 
 ## Learn More
 

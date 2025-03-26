@@ -38,8 +38,8 @@ export default function PageLayout({ children, userType, title }: PageLayoutProp
       </div>
       
       {/* Main Content */}
-      <div className="ml-64 pt-16">
-        <main className="p-6 bg-gray-100 min-h-[calc(100vh-4rem)]">
+      <div className="ml-64 pt-16 w-[calc(100vw-16rem)]">
+        <main className="p-6 bg-gray-100 min-h-[calc(100vh-4rem)] w-full">
           {title && <h1 className="text-2xl font-bold mb-6">{title}</h1>}
           {children}
         </main>
