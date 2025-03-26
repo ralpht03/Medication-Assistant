@@ -1,7 +1,7 @@
-import { Check, Clock, X, Bell } from "lucide-react";
-import { useRef, useState } from "react";
-import axios from "axios"; // Import axios
+import { Check, Clock, X, AlertTriangle } from "lucide-react";
+import { useState } from "react";
 import { Medications } from '@/lib/types';
+import CameraModal from '@/components/CameraModal';
 
 export type MedicationStatus = 'taken' | 'missed' | 'upcoming';
 
@@ -27,84 +27,29 @@ interface MedicationCardProps {
 
 const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: MedicationCardProps) => {
   const StatusIcon = statusConfig[medication.status].icon;
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isCapturing, setIsCapturing] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [alert, setAlert] = useState<string | null>(null);
 
-  // Function to start camera
-  const startCamera = async () => {
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play();
-        }
-      } catch (error) {
-        console.error("Camera access denied", error);
-      }
-    }
+  // Function to show alert
+  const showAlert = (message: string) => {
+    setAlert(message);
+    setTimeout(() => setAlert(null), 5000); // Hide after 5 seconds
   };
 
-  // Function to capture an image from the video feed
-  const captureImage = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      if (!video || !canvas) return null;
-
-      const ctx = canvas.getContext("2d");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      return canvas.toDataURL("image/jpeg"); // Convert frame to base64
-    } catch (error) {
-      setMessage("Error accessing camera. Please check permissions.");
-      return null;
-    }
+  // Function to handle "Take Now" button click
+  const handleTakeNow = () => {
+    setShowCameraModal(true);
   };
-
-  // Function to verify pill before marking as taken
-  const verifyAndTakeMedication = async () => {
-    setIsProcessing(true);
-    setMessage("Processing...");
-
-    const image = await captureImage();
-    if (!image) {
-      setMessage("Error capturing image.");
-      setIsProcessing(false);
-      return;
-    }
-
-    try {
-      const response = await axios.post("/api/verify-medication", { 
-        image,
-        medicationId: medication.RowKey,
-        patientId: medication.patientId
-      });
-      
-      const { verified, pill_name, confidence } = response.data;
-
-      if (verified && pill_name.toLowerCase().includes(medication.name.toLowerCase())) {
-        setMessage(`Pill verified as ${pill_name}. Confidence: ${(confidence * 100).toFixed(2)}%.`);
-        if (onTake) onTake();
-      } else {
-        setMessage(`Pill verification failed. Detected: ${pill_name} (Confidence: ${(confidence * 100).toFixed(2)}%)`);
-      }
-    } catch (error) {
-      console.error("Error verifying medication:", error);
-      setMessage("Error verifying medication.");
-    }
-
-    setIsProcessing(false);
+  
+  // Function to handle modal close
+  const handleModalClose = () => {
+    setShowCameraModal(false);
+  };
+  
+  // Function to handle successful medication taking
+  const handleMedicationTaken = () => {
+    if (onTake) onTake();
+    setShowCameraModal(false);
   };
 
   return (
@@ -124,19 +69,10 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
       {showActions && (
         <div className="mt-4 flex space-x-2">
           <button
-            onClick={startCamera}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+            onClick={handleTakeNow}
+            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
           >
-            Open Camera
-          </button>
-          <button
-            onClick={verifyAndTakeMedication}
-            className={`px-4 py-2 text-white rounded ${
-              isProcessing ? "bg-gray-400 cursor-not-allowed" : "bg-green-600 hover:bg-green-700"
-            }`}
-            disabled={isProcessing}
-          >
-            {isProcessing ? "Verifying..." : "Take Now"}
+            Take Now
           </button>
           {onSnooze && (
             <button onClick={onSnooze} className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600">
@@ -145,13 +81,29 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
           )}
         </div>
       )}
-
-      {/* Camera Video & Canvas */}
-      <video ref={videoRef} style={{ display: "none" }} />
-      <canvas ref={canvasRef} style={{ display: "none" }} />
-
-      {/* Message Display */}
-      {message && <p className="mt-2 text-sm text-gray-700">{message}</p>}
+      
+      {/* Camera Modal */}
+      <CameraModal
+        isOpen={showCameraModal}
+        onClose={handleModalClose}
+        medication={{
+          id: medication.RowKey,
+          name: medication.name,
+          dosage: medication.dosage,
+          patientId: medication.patientId
+        }}
+        onTakeMedication={handleMedicationTaken}
+      />
+      
+      {/* Alert Message */}
+      {alert && (
+        <div className="fixed bottom-4 right-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded shadow-md max-w-md z-50">
+          <div className="flex">
+            <AlertTriangle className="h-5 w-5 text-yellow-500 mr-2" />
+            <p>{alert}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
