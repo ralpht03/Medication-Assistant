@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Upload, FileUp, Search, Check, AlertCircle, ChevronDown } from 'lucide-react';
 import handlePrescriptionUpload from '@/components/handlePrescriptionUpload';
-import { createTableClient } from '@/lib/azure-table-utils';
 
 interface Patient {
   id: string;
@@ -45,32 +44,23 @@ const AdminPrescriptionUpload = () => {
           return;
         }
         
-        // Create table clients
-        const usersTableClient = createTableClient('Users');
-        const adminPatientRelationsTableClient = createTableClient('AdminPatientRelations');
+        // Use the API endpoint to fetch patients
+        const response = await fetch(`/api/admin/patients?adminId=${adminId}`);
         
-        // Get all relations for this admin
-        const filter = `PartitionKey eq '${adminId}'`;
-        const relations = adminPatientRelationsTableClient.listEntities({ queryOptions: { filter } });
-        
-        const patientsList: Patient[] = [];
-        
-        for await (const relation of relations) {
-          try {
-            // Get the patient user info
-            const patientId = relation.patientId as string;
-            const patientUser = await usersTableClient.getEntity('USER', patientId);
-            
-            patientsList.push({
-              id: patientUser.rowKey as string,
-              firstName: patientUser.firstName as string,
-              lastName: patientUser.lastName as string,
-              email: patientUser.email as string
-            });
-          } catch (error) {
-            console.error('Error processing patient relation:', error);
-          }
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to fetch patients');
         }
+        
+        const data = await response.json();
+        
+        // Transform the data to match our Patient interface
+        const patientsList: Patient[] = data.patients.map((patient: any) => ({
+          id: patient.id,
+          firstName: patient.firstName || (patient.name ? patient.name.split(' ')[0] : ''),
+          lastName: patient.lastName || (patient.name ? patient.name.split(' ').slice(1).join(' ') : ''),
+          email: patient.email
+        }));
         
         setPatients(patientsList);
         setIsLoading(false);

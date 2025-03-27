@@ -1,13 +1,13 @@
 import { useState, useEffect } from "react"
 import { Search, AlertCircle, CheckCircle, PlusCircle, Loader2, UserMinus } from "lucide-react"
 import MedicationAssignmentModal from "./MedicationAssignmentModal"
-import { createTableClient } from "../lib/azure-tables-utilities"
 
 // Define types based on your Azure Table Storage schema
 interface Patient {
   id: string
-  firstName: string
-  lastName: string
+  firstName?: string
+  lastName?: string
+  name?: string
   email: string
   currentMedications: Medication[]
   adherenceRate: number
@@ -102,7 +102,12 @@ const PatientListTable = () => {
   }
 
   const getPatientName = (patient: Patient) => {
-    return `${patient.firstName} ${patient.lastName}`
+    // If name property exists, use it
+    if (patient.name) {
+      return patient.name;
+    }
+    // Otherwise use firstName and lastName
+    return `${patient.firstName || ''} ${patient.lastName || ''}`.trim();
   }
 
   const getStatusInfo = (patient: Patient) => {
@@ -446,7 +451,12 @@ const PatientListTable = () => {
       {/* Medication Assignment Modal */}
       {selectedPatient && (
         <MedicationAssignmentModal
-          patient={selectedPatient}
+          patient={{
+            id: selectedPatient.id,
+            firstName: selectedPatient.firstName || (selectedPatient.name ? selectedPatient.name.split(' ')[0] : ''),
+            lastName: selectedPatient.lastName || (selectedPatient.name ? selectedPatient.name.split(' ').slice(1).join(' ') : ''),
+            email: selectedPatient.email
+          }}
           onClose={handleCloseModal}
           onMedicationAssigned={handleMedicationAssigned}
         />

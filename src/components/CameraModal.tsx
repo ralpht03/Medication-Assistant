@@ -45,7 +45,7 @@ export default function CameraModal({
   useEffect(() => {
     if (medication?.dosage) {
       const match = medication.dosage.match(/^(\d+)/);
-      const count = match ? parseInt(match[1], 10) : 1;
+      const count = 1; // Need to pull from database, take out recommended dosage
       setRecommendedCount(count);
       setPillCount(count);
     }
