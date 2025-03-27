@@ -1,16 +1,41 @@
 import { useState, useEffect } from "react"
-import { Search, MoreVertical, AlertCircle, CheckCircle, PlusCircle, Loader2 } from "lucide-react"
+import { Search, AlertCircle, CheckCircle, PlusCircle, Loader2, UserMinus } from "lucide-react"
 import MedicationAssignmentModal from "./MedicationAssignmentModal"
+import { createTableClient } from "../lib/azure-tables-utilities"
 
+// Define types based on your Azure Table Storage schema
 interface Patient {
   id: string
-  name: string
+  firstName: string
+  lastName: string
   email: string
-  lastMedication: string
-  nextScheduled: string
+  currentMedications: Medication[]
   adherenceRate: number
-  status: "normal" | "missed" | "overdose"
-  medicationCount?: number
+  alerts?: Alert[]
+  profile?: any
+  medicalHistory?: any
+}
+
+interface Medication {
+  rowKey: string
+  name: string
+  dosage: string
+  frequency: string
+  time: string
+  instructions?: string
+  startDate?: string
+  endDate?: string
+  refillsRemaining?: number
+  lastFilled?: string
+  prescribingDoctor?: string
+  pharmacy?: string
+}
+
+interface Alert {
+  type: string
+  medicationId: string
+  medicationName: string
+  message: string
 }
 
 const PatientListTable = () => {
@@ -18,14 +43,15 @@ const PatientListTable = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
-  const [sortField, setSortField] = useState<keyof Patient>("name")
+  const [sortField, setSortField] = useState<string>("lastName")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState<string | null>(null)
 
-  // Fetch linked patients from the API
+  // Fetch linked patients
   useEffect(() => {
-    const fetchLinkedPatients = async () => {
+    const fetchPatients = async () => {
       try {
         setLoading(true)
         setError(null)
@@ -37,68 +63,36 @@ const PatientListTable = () => {
         }
         
         const user = JSON.parse(userStr)
-        console.log('User data from localStorage:', JSON.stringify(user, null, 2))
-        
-        // Try all possible ID fields
-        let adminId = user.id || user.rowKey || user.RowKey || user.email || 'atest@usf.edu'
+        const adminId = user.id || user.rowKey || ''
         
         if (!adminId) {
-          console.error('Admin ID not found in user data:', user)
           throw new Error('Admin ID not found')
         }
         
-        console.log('Using admin ID:', adminId)
+        console.log('Fetching patients for admin ID:', adminId)
         
-        // If we have the hardcoded admin ID, use it directly
-        const hardcodedAdminId = '459e9187-2c24-492e-b0c5-f97fc19601b0'
-        if (adminId !== hardcodedAdminId && user.email === 'atest@usf.edu') {
-          console.log(`Using hardcoded admin ID (${hardcodedAdminId}) instead of ${adminId}`)
-          adminId = hardcodedAdminId
-        }
-        
-        // Fetch linked patients
-        console.log('Fetching linked patients for admin ID:', adminId);
-        const response = await fetch(`/api/admin/patients?adminId=${adminId}`);
-        
-        // Log the raw response for debugging
-        const responseText = await response.text();
-        console.log('Raw API response:', responseText);
-        
-        // Parse the response text back to JSON
-        let data;
-        try {
-          data = JSON.parse(responseText);
-        } catch (e) {
-          console.error('Error parsing response JSON:', e);
-          throw new Error('Invalid JSON response from API');
-        }
+        // Call your API endpoint to get patients by admin ID
+        const response = await fetch(`/api/admin/patients?adminId=${adminId}`)
         
         if (!response.ok) {
-          console.error('API error response:', data);
-          throw new Error(data.error || 'Failed to fetch linked patients');
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to fetch patients')
         }
         
-        console.log('Parsed patient data:', data);
-        setPatients(data.patients || []);
-        
-        if (data.patients && data.patients.length > 0) {
-          console.log(`Found ${data.patients.length} linked patients`);
-        } else {
-          console.log('No linked patients found');
-        }
+        const data = await response.json()
+        setPatients(data.patients || [])
       } catch (err) {
-        console.error('Error fetching linked patients:', err)
+        console.error('Error fetching patients:', err)
         setError(err instanceof Error ? err.message : 'An unknown error occurred')
-        setPatients([])
       } finally {
         setLoading(false)
       }
     }
     
-    fetchLinkedPatients()
-  }, [refreshTrigger]) // Refetch when refreshTrigger changes
+    fetchPatients()
+  }, [refreshTrigger])
 
-  const handleSort = (field: keyof Patient) => {
+  const handleSort = (field: string) => {
     if (field === sortField) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc")
     } else {
@@ -107,17 +101,67 @@ const PatientListTable = () => {
     }
   }
 
-  const getStatusColor = (status: Patient["status"]) => {
-    switch (status) {
-      case "normal":
-        return "bg-green-100 text-green-800"
-      case "missed":
-        return "bg-red-100 text-red-800"
-      case "overdose":
-        return "bg-orange-100 text-orange-800"
-      default:
-        return "bg-gray-100 text-gray-800"
+  const getPatientName = (patient: Patient) => {
+    return `${patient.firstName} ${patient.lastName}`
+  }
+
+  const getStatusInfo = (patient: Patient) => {
+    // Check for alerts to determine status
+    if (patient.alerts && patient.alerts.length > 0) {
+      return {
+        status: "alert",
+        label: "Attention Needed",
+        class: "bg-red-100 text-red-800"
+      }
     }
+    
+    // Check adherence rate for status
+    if (patient.adherenceRate >= 80) {
+      return {
+        status: "good",
+        label: "Good",
+        class: "bg-green-100 text-green-800"
+      }
+    } else if (patient.adherenceRate >= 60) {
+      return {
+        status: "moderate",
+        label: "Moderate",
+        class: "bg-yellow-100 text-yellow-800"
+      }
+    } else {
+      return {
+        status: "poor",
+        label: "Poor",
+        class: "bg-red-100 text-red-800"
+      }
+    }
+  }
+  
+  // Get the last medication time
+  const getLastMedicationTime = (patient: Patient) => {
+    if (!patient.currentMedications || patient.currentMedications.length === 0) {
+      return "No data"
+    }
+    
+    // In a real application, this would come from medication tracking data
+    // For now, we'll return "Today" as a placeholder
+    return "Today"
+  }
+  
+  // Get the next scheduled medication time
+  const getNextScheduledTime = (patient: Patient) => {
+    if (!patient.currentMedications || patient.currentMedications.length === 0) {
+      return "No medications"
+    }
+    
+    // In a real application, this would be calculated from medication schedules
+    // For now, we'll return a placeholder
+    const medicationsWithTimes = patient.currentMedications.filter(med => med.time)
+    if (medicationsWithTimes.length > 0) {
+      return medicationsWithTimes[0].time
+    }
+    
+    return "No schedule"
   }
   
   const handlePatientClick = (patient: Patient) => {
@@ -127,38 +171,105 @@ const PatientListTable = () => {
   const handleCloseModal = () => {
     setSelectedPatient(null)
   }
-
-  const filteredPatients = patients
-    .filter((patient: Patient) =>
-      patient.name.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-    .sort((a: Patient, b: Patient) => {
-      // Safe comparison that handles undefined values
-      const aValue = a[sortField] || '';
-      const bValue = b[sortField] || '';
-      
-      if (sortDirection === "asc") {
-        return aValue > bValue ? 1 : -1
+  
+  const handleRemovePatient = async (patientId: string) => {
+    try {
+      // Get the admin ID
+      const userStr = localStorage.getItem('user')
+      if (!userStr) {
+        throw new Error('User not found in localStorage')
       }
-      return aValue < bValue ? 1 : -1
-    })
+      
+      const user = JSON.parse(userStr)
+      const adminId = user.id || user.rowKey || ''
+      
+      if (!adminId) {
+        throw new Error('Admin ID not found')
+      }
+      
+      // Call API to remove patient
+      const response = await fetch(`/api/admin/patients/remove`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          adminId,
+          patientId
+        }),
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to remove patient')
+      }
+      
+      // Refresh the patient list
+      setRefreshTrigger(prev => prev + 1)
+      setShowRemoveConfirm(null)
+    } catch (err) {
+      console.error('Error removing patient:', err)
+      alert('Failed to remove patient: ' + (err instanceof Error ? err.message : 'Unknown error'))
+    }
+  }
 
   // Function to refresh the patient list after medication assignment
   const handleMedicationAssigned = () => {
-    setRefreshTrigger(prev => prev + 1);
-    handleCloseModal();
-  };
+    setRefreshTrigger(prev => prev + 1)
+    handleCloseModal()
+  }
+
+  // Sort and filter patients
+  const sortAndFilterPatients = () => {
+    return [...patients]
+      .filter(patient => {
+        const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase()
+        return fullName.includes(searchTerm.toLowerCase()) || 
+               (patient.email && patient.email.toLowerCase().includes(searchTerm.toLowerCase()))
+      })
+      .sort((a, b) => {
+        let aValue: any, bValue: any
+
+        // Handle nested properties
+        if (sortField === "name") {
+          aValue = `${a.firstName} ${a.lastName}`
+          bValue = `${b.firstName} ${b.lastName}`
+        } else if (sortField === "medicationCount") {
+          aValue = a.currentMedications?.length || 0
+          bValue = b.currentMedications?.length || 0
+        } else if (sortField === "alertCount") {
+          aValue = a.alerts?.length || 0 
+          bValue = b.alerts?.length || 0
+        } else {
+          // For direct properties
+          aValue = a[sortField as keyof Patient]
+          bValue = b[sortField as keyof Patient]
+        }
+        
+        // Handle undefined values
+        if (aValue === undefined) aValue = ''
+        if (bValue === undefined) bValue = ''
+        
+        // Sort based on direction
+        if (sortDirection === "asc") {
+          return aValue > bValue ? 1 : -1
+        }
+        return aValue < bValue ? 1 : -1
+      })
+  }
+
+  const filteredPatients = sortAndFilterPatients()
 
   return (
     <div className="bg-white rounded-lg shadow-md">
       <div className="p-4 border-b border-gray-200">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <h2 className="text-lg font-semibold text-gray-800">Patients</h2>
-          <div className="relative">
+          <div className="relative w-full sm:w-auto">
             <input
               type="text"
               placeholder="Search patients..."
-              className="pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -219,15 +330,9 @@ const PatientListTable = () => {
                 </th>
                 <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                  onClick={() => handleSort("lastMedication")}
+                  onClick={() => handleSort("medicationCount")}
                 >
-                  Last Taken
-                </th>
-                <th
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                  onClick={() => handleSort("nextScheduled")}
-                >
-                  Next Scheduled
+                  Medications
                 </th>
                 <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
@@ -237,63 +342,102 @@ const PatientListTable = () => {
                 </th>
                 <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                  onClick={() => handleSort("status")}
+                  onClick={() => handleSort("alertCount")}
                 >
-                  Status
+                  Alerts
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredPatients.map((patient: Patient) => (
-                <tr
-                  key={patient.id}
-                  className="hover:bg-gray-50 cursor-pointer"
-                  onClick={() => handlePatientClick(patient)}
-                >
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{patient.name}</div>
-                    <div className="text-xs text-gray-500">{patient.email}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-500">{patient.lastMedication}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-500">{patient.nextScheduled}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="w-16 bg-gray-200 rounded-full h-2.5">
-                        <div
-                          className="bg-blue-600 h-2.5 rounded-full"
-                          style={{ width: `${patient.adherenceRate}%` }}
-                        ></div>
+              {filteredPatients.map((patient) => {
+                const statusInfo = getStatusInfo(patient)
+                return (
+                  <tr
+                    key={patient.id}
+                    className="hover:bg-gray-50"
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">{getPatientName(patient)}</div>
+                      <div className="text-xs text-gray-500">{patient.email}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-500">{patient.currentMedications?.length || 0}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="w-16 bg-gray-200 rounded-full h-2.5">
+                          <div
+                            className="bg-blue-600 h-2.5 rounded-full"
+                            style={{ width: `${patient.adherenceRate}%` }}
+                          ></div>
+                        </div>
+                        <span className="ml-2 text-sm text-gray-500">{patient.adherenceRate}%</span>
                       </div>
-                      <span className="ml-2 text-sm text-gray-500">{patient.adherenceRate}%</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(patient.status)}`}>
-                      {patient.status === "normal" && <CheckCircle className="w-4 h-4 mr-1" />}
-                      {patient.status === "missed" && <AlertCircle className="w-4 h-4 mr-1" />}
-                      {patient.status.charAt(0).toUpperCase() + patient.status.slice(1)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      className="text-blue-600 hover:text-blue-900"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePatientClick(patient);
-                      }}
-                    >
-                      <PlusCircle className="h-5 w-5" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-500">
+                        {patient.alerts && patient.alerts.length > 0 ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            {patient.alerts.length}
+                          </span>
+                        ) : (
+                          <span>None</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2.5 py-0.5 inline-flex items-center text-xs leading-5 font-semibold rounded-full ${statusInfo.class}`}>
+                        {statusInfo.status === "good" && <CheckCircle className="w-4 h-4 mr-1" />}
+                        {statusInfo.status === "alert" && <AlertCircle className="w-4 h-4 mr-1" />}
+                        {statusInfo.label}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex justify-end space-x-2">
+                        {showRemoveConfirm === patient.id ? (
+                          <>
+                            <button
+                              onClick={() => handleRemovePatient(patient.id)}
+                              className="text-red-600 hover:text-red-900 px-2 py-1 bg-red-50 rounded"
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              onClick={() => setShowRemoveConfirm(null)}
+                              className="text-gray-600 hover:text-gray-900 px-2 py-1 bg-gray-50 rounded"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handlePatientClick(patient)}
+                              className="text-blue-600 hover:text-blue-900 p-1"
+                              title="Assign Medication"
+                            >
+                              <PlusCircle className="h-5 w-5" />
+                            </button>
+                            <button
+                              onClick={() => setShowRemoveConfirm(patient.id)}
+                              className="text-gray-600 hover:text-red-900 p-1"
+                              title="Remove Patient"
+                            >
+                              <UserMinus className="h-5 w-5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

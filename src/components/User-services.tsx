@@ -76,6 +76,17 @@ export class UserService {
     return await bcrypt.compare(password, hash);
   }
 
+  // Helper function to get fixed ID for test emails
+  private getFixedUserId(email: string): string | null {
+    // Map specific emails to fixed IDs
+    if (email === 'atest@usf.edu') {
+      return '0000'; // Admin user
+    } else if (email === 'test@usf.edu') {
+      return '0001'; // Patient user
+    }
+    return null; // No fixed ID for other emails
+  }
+
   async signup(userData: SignupData): Promise<AuthResult> {
     try {
       // Check if user exists
@@ -95,8 +106,9 @@ export class UserService {
       // Hash password
       const hashedPassword = await this.hashPassword(userData.password);
       
-      // Generate user ID
-      const userId = uuidv4();
+      // Generate user ID or use fixed ID for test emails
+      const fixedUserId = this.getFixedUserId(userData.email);
+      const userId = fixedUserId || uuidv4();
       const now = new Date().toISOString();
       
       // Create user entity
@@ -179,6 +191,51 @@ export class UserService {
       for await (const entity of users) {
         user = entity;
         break;
+      }
+      
+      // Special case: If this is a test email and user doesn't exist, auto-create it
+      const fixedUserId = this.getFixedUserId(loginData.email);
+      if (!user && fixedUserId) {
+        // Determine the role based on email
+        const role = loginData.email === 'atest@usf.edu' ? 'admin' : 'patient';
+        
+        // Create user with fixed ID
+        const hashedPassword = await this.hashPassword(loginData.password);
+        const now = new Date().toISOString();
+        
+        const newUser: AzureTableUser = {
+          partitionKey: 'USER',
+          rowKey: fixedUserId,
+          email: loginData.email,
+          passwordHash: hashedPassword,
+          firstName: loginData.email === 'atest@usf.edu' ? 'Admin' : 'Test',
+          lastName: 'User',
+          role: role,
+          createdAt: now,
+          updatedAt: now
+        };
+        
+        await this.usersTableClient.createEntity(newUser);
+        
+        // If role is patient, create patient profile
+        if (role === 'patient') {
+          const patientEntity: AzureTablePatient = {
+            partitionKey: 'PATIENT',
+            rowKey: fixedUserId,
+            profile: JSON.stringify({}),
+            medicalHistory: JSON.stringify({}),
+            allergies: JSON.stringify([]),
+            currentMedications: JSON.stringify([]),
+            adminIds: JSON.stringify(['0000']) // Auto-assign to admin
+          };
+          
+          await this.patientsTableClient.createEntity(patientEntity);
+          
+          // Create the admin-patient relationship
+          await this.assignPatientToAdmin(fixedUserId, '0000');
+        }
+        
+        user = newUser;
       }
       
       if (!user) {
@@ -286,7 +343,7 @@ export class UserService {
     }
   }
 
-  // Remove a patient from an admin
+  // The rest of the methods remain unchanged
   async removePatientFromAdmin(patientId: string, adminId: string): Promise<void> {
     try {
       // Find the relation
@@ -330,7 +387,6 @@ export class UserService {
     }
   }
 
-  // Get all patients assigned to an admin
   async getPatientsByAdminId(adminId: string): Promise<any[]> {
     try {
       // First, verify that the admin exists and is actually an admin
@@ -427,4 +483,3 @@ export class UserService {
       throw error;
     }
   }
-}
