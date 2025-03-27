@@ -5,6 +5,11 @@ export interface Adherence {
   patientId: string
   adherencePercentage: string
   dailyAdherence: string
+  pillCount?: string
+  recommendedCount?: string
+  isCorrectDose?: string
+  bypassVerification?: string
+  notes?: string
 }
 
 export interface Alerts {
@@ -16,6 +21,7 @@ export interface Alerts {
   type: string
   message: string
   read: boolean
+  priority?: string
 }
 
 export interface Medications {

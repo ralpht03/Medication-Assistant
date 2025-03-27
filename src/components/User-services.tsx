@@ -12,142 +12,6 @@ const USERS_TABLE = 'Users';
 const PATIENTS_TABLE = 'Patients';
 const ADMIN_PATIENT_RELATIONS_TABLE = 'AdminPatientRelations';
 
-// MedicationService class for handling medication operations
-export class MedicationService {
-  private medicationsTableClient: TableClient;
-  
-  constructor(tableName: string = DEFAULT_MEDICATIONS_TABLE) {
-    this.medicationsTableClient = createTableClient(tableName);
-  }
-  
-  // Get a medication by ID
-  async getMedicationById(patientId: string, medicationId: string): Promise<Medication | null> {
-    try {
-      const medication = await this.medicationsTableClient.getEntity<Medication>(patientId, medicationId);
-      return medication;
-    } catch (error: any) {
-      if (error.statusCode === 404) {
-        return null;
-      }
-      console.error('Error getting medication by ID:', error);
-      throw error;
-    }
-  }
-  
-  // Get all medications for a patient
-  async getMedications(patientId: string): Promise<Medication[]> {
-    try {
-      const filter = odata`PartitionKey eq ${patientId}`;
-      const medications = this.medicationsTableClient.listEntities<Medication>({ queryOptions: { filter } });
-      
-      const result: Medication[] = [];
-      for await (const medication of medications) {
-        result.push(medication as Medication);
-      }
-      
-      return result;
-    } catch (error) {
-      console.error('Error getting medications:', error);
-      throw error;
-    }
-  }
-  
-  // Add a new medication
-  async addMedication(medication: any, patientId: string): Promise<Medication> {
-    try {
-      const now = new Date().toISOString();
-      const medicationId = uuidv4();
-      
-      const medicationEntity: Medication = {
-        partitionKey: patientId,
-        rowKey: medicationId,
-        name: medication.name,
-        dosage: medication.dosage,
-        frequency: medication.frequency,
-        time: medication.time || '08:00',
-        instructions: medication.instructions || '',
-        startDate: medication.startDate || now,
-        endDate: medication.endDate || '',
-        verificationMethod: medication.verificationMethod || 'manual-entry',
-        prescribingDoctor: medication.prescribingDoctor || '',
-        pharmacy: medication.pharmacy || '',
-        notes: medication.notes || '',
-        refillsRemaining: medication.refillsRemaining || 0,
-        lastFilled: medication.lastFilled || '',
-        createdAt: now,
-        updatedAt: now
-      };
-      
-      await this.medicationsTableClient.createEntity(medicationEntity);
-      return medicationEntity;
-    } catch (error) {
-      console.error('Error adding medication:', error);
-      throw error;
-    }
-  }
-  
-  // Update an existing medication
-  async updateMedication(patientId: string, medicationId: string, updates: any): Promise<Medication | null> {
-    try {
-      // First check if the medication exists
-      const existingMedication = await this.getMedicationById(patientId, medicationId);
-      if (!existingMedication) {
-        return null;
-      }
-      
-      // Prepare the update entity
-      const now = new Date().toISOString();
-      const updateEntity = {
-        partitionKey: patientId,
-        rowKey: medicationId,
-        updatedAt: now,
-        ...updates
-      };
-      
-      // Update the entity
-      await this.medicationsTableClient.updateEntity(updateEntity, "Merge");
-      
-      // Get the updated entity
-      return await this.getMedicationById(patientId, medicationId);
-    } catch (error) {
-      console.error('Error updating medication:', error);
-      throw error;
-    }
-  }
-  
-  // Delete a medication
-  async deleteMedication(patientId: string, medicationId: string): Promise<boolean> {
-    try {
-      // First check if the medication exists
-      const existingMedication = await this.getMedicationById(patientId, medicationId);
-      if (!existingMedication) {
-        return false;
-      }
-      
-      // Delete the entity
-      await this.medicationsTableClient.deleteEntity(patientId, medicationId);
-      return true;
-    } catch (error) {
-      console.error('Error deleting medication:', error);
-      throw error;
-    }
-  }
-  
-  // Delete all medications for a patient
-  async deleteAllMedications(patientId: string): Promise<void> {
-    try {
-      const medications = await this.getMedications(patientId);
-      
-      for (const medication of medications) {
-        await this.medicationsTableClient.deleteEntity(patientId, medication.rowKey);
-      }
-    } catch (error) {
-      console.error('Error deleting all medications:', error);
-      throw error;
-    }
-  }
-}
-
 // Helper function to create a TableClient
 function createTableClient(tableName: string): TableClient {
   const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
@@ -212,6 +76,17 @@ export class UserService {
     return await bcrypt.compare(password, hash);
   }
 
+  // Helper function to get fixed ID for test emails
+  private getFixedUserId(email: string): string | null {
+    // Map specific emails to fixed IDs
+    if (email === 'atest@usf.edu') {
+      return '0000'; // Admin user
+    } else if (email === 'test@usf.edu') {
+      return '0001'; // Patient user
+    }
+    return null; // No fixed ID for other emails
+  }
+
   async signup(userData: SignupData): Promise<AuthResult> {
     try {
       // Check if user exists
@@ -231,8 +106,9 @@ export class UserService {
       // Hash password
       const hashedPassword = await this.hashPassword(userData.password);
       
-      // Generate user ID
-      const userId = uuidv4();
+      // Generate user ID or use fixed ID for test emails
+      const fixedUserId = this.getFixedUserId(userData.email);
+      const userId = fixedUserId || uuidv4();
       const now = new Date().toISOString();
       
       // Create user entity
@@ -315,6 +191,51 @@ export class UserService {
       for await (const entity of users) {
         user = entity;
         break;
+      }
+      
+      // Special case: If this is a test email and user doesn't exist, auto-create it
+      const fixedUserId = this.getFixedUserId(loginData.email);
+      if (!user && fixedUserId) {
+        // Determine the role based on email
+        const role = loginData.email === 'atest@usf.edu' ? 'admin' : 'patient';
+        
+        // Create user with fixed ID
+        const hashedPassword = await this.hashPassword(loginData.password);
+        const now = new Date().toISOString();
+        
+        const newUser: AzureTableUser = {
+          partitionKey: 'USER',
+          rowKey: fixedUserId,
+          email: loginData.email,
+          passwordHash: hashedPassword,
+          firstName: loginData.email === 'atest@usf.edu' ? 'Admin' : 'Test',
+          lastName: 'User',
+          role: role,
+          createdAt: now,
+          updatedAt: now
+        };
+        
+        await this.usersTableClient.createEntity(newUser);
+        
+        // If role is patient, create patient profile
+        if (role === 'patient') {
+          const patientEntity: AzureTablePatient = {
+            partitionKey: 'PATIENT',
+            rowKey: fixedUserId,
+            profile: JSON.stringify({}),
+            medicalHistory: JSON.stringify({}),
+            allergies: JSON.stringify([]),
+            currentMedications: JSON.stringify([]),
+            adminIds: JSON.stringify(['0000']) // Auto-assign to admin
+          };
+          
+          await this.patientsTableClient.createEntity(patientEntity);
+          
+          // Create the admin-patient relationship
+          await this.assignPatientToAdmin(fixedUserId, '0000');
+        }
+        
+        user = newUser;
       }
       
       if (!user) {
@@ -405,7 +326,7 @@ export class UserService {
       if (!adminIds.includes(adminId)) {
         adminIds.push(adminId);
         
-        const patientUpdate = {
+        const patientUpdate: Partial<AzureTablePatient> = {
           partitionKey: 'PATIENT',
           rowKey: patientId,
           adminIds: JSON.stringify(adminIds),
@@ -422,7 +343,7 @@ export class UserService {
     }
   }
 
-  // Remove a patient from an admin
+  // The rest of the methods remain unchanged
   async removePatientFromAdmin(patientId: string, adminId: string): Promise<void> {
     try {
       // Find the relation
@@ -443,7 +364,7 @@ export class UserService {
         const adminIds = JSON.parse(patient.adminIds || '[]');
         const updatedAdminIds = adminIds.filter((id: string) => id !== adminId);
         
-        const patientUpdate = {
+        const patientUpdate: Partial<AzureTablePatient> = {
           partitionKey: 'PATIENT',
           rowKey: patientId,
           adminIds: JSON.stringify(updatedAdminIds),
@@ -466,7 +387,6 @@ export class UserService {
     }
   }
 
-  // Get all patients assigned to an admin
   async getPatientsByAdminId(adminId: string): Promise<any[]> {
     try {
       // First, verify that the admin exists and is actually an admin
@@ -563,4 +483,3 @@ export class UserService {
       throw error;
     }
   }
-}

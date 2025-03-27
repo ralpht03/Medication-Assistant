@@ -1,11 +1,34 @@
 "use client";
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Camera, AlertCircle } from 'lucide-react';
 import axios from 'axios';
 import cv from '@techstark/opencv-js';
 
-export default function PillIdentification() {
+interface PillIdentificationProps {
+  medicationId?: string;
+  patientId?: string;
+  onVerificationSuccess?: (result: any) => void;
+  onVerificationError?: (type: 'camera' | 'network' | 'verification' | 'user', code: string, message: string, recoverable?: boolean, result?: any) => void;
+  isModal?: boolean;
+  hideControls?: boolean;
+}
+
+// Export the component type for ref usage
+export interface PillIdentificationRef {
+  stopCamera: () => void;
+  startCamera: () => Promise<void>;
+  captureAndIdentify: () => Promise<void>;
+}
+
+const PillIdentification = forwardRef<PillIdentificationRef, PillIdentificationProps>(({
+  medicationId = 'identification-only',
+  patientId,
+  onVerificationSuccess,
+  onVerificationError,
+  isModal = false,
+  hideControls = false
+}, ref) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [message, setMessage] = useState('');
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -27,6 +50,20 @@ export default function PillIdentification() {
   useEffect(() => {
     checkCameraPermissions();
   }, []);
+
+  // Auto-start camera if in modal mode
+  useEffect(() => {
+    if (isModal && permissionState !== 'denied') {
+      startCamera();
+    }
+  }, [isModal, permissionState]);
+
+  // Expose methods via ref
+  useImperativeHandle(ref, () => ({
+    stopCamera,
+    startCamera,
+    captureAndIdentify
+  }));
 
   const checkCameraPermissions = async () => {
     try {
@@ -55,6 +92,15 @@ export default function PillIdentification() {
       console.error('Permission request error:', error);
       setPermissionState('denied');
       setMessage('Camera access denied. Please enable camera permissions in your browser settings.');
+      
+      if (onVerificationError) {
+        onVerificationError(
+          'camera', 
+          'PermissionDenied', 
+          'Camera access denied. Please enable camera permissions in your browser settings.',
+          false
+        );
+      }
     }
   };
 
@@ -95,10 +141,37 @@ export default function PillIdentification() {
         if (error.name === 'NotAllowedError') {
           setPermissionState('denied');
           setMessage('Camera access denied. Click "Enable Camera" to grant permission.');
+          
+          if (onVerificationError) {
+            onVerificationError(
+              'camera', 
+              'NotAllowedError', 
+              'Camera access denied. Click "Enable Camera" to grant permission.',
+              true
+            );
+          }
         } else if (error.name === 'NotFoundError') {
           setMessage('No camera found. Please connect a camera and try again.');
+          
+          if (onVerificationError) {
+            onVerificationError(
+              'camera', 
+              'NotFoundError', 
+              'No camera found. Please connect a camera and try again.',
+              false
+            );
+          }
         } else {
           setMessage(`Camera error: ${error.message}`);
+          
+          if (onVerificationError) {
+            onVerificationError(
+              'camera', 
+              error.name, 
+              `Camera error: ${error.message}`,
+              true
+            );
+          }
         }
       }
     } finally {
@@ -139,32 +212,145 @@ export default function PillIdentification() {
         throw new Error("Failed to capture image");
       }
 
-      const userStr = localStorage.getItem('user');
-      if (!userStr) {
+      // Check for low light conditions before sending to API
+      if (isOpenCVReady) {
+        try {
+          const lowLightDetected = await checkLowLightCondition(image);
+          if (lowLightDetected) {
+            setMessage("Low light detected. Please ensure the pill is in a well-lit area for accurate identification.");
+            
+            if (onVerificationError) {
+              onVerificationError(
+                'verification',
+                'LowLightCondition',
+                "Low light detected. Please ensure the pill is in a well-lit area for accurate identification.",
+                true
+              );
+            }
+            return;
+          }
+        } catch (e) {
+          console.log("Error checking light conditions:", e);
+          // Continue with verification even if light check fails
+        }
+      }
+
+      // Get patientId from props or localStorage
+      const userPatientId = patientId || (() => {
+        const userStr = localStorage.getItem('user');
+        if (!userStr) return null;
+        const user = JSON.parse(userStr);
+        return user.id || user.RowKey;
+      })();
+
+      if (!userPatientId) {
         throw new Error("User session not found");
       }
 
-      const user = JSON.parse(userStr);
-      const response = await axios.post("/api/verify-medication", { 
+      console.log('Sending verification request:', {
+        medicationId,
+        patientId: userPatientId,
+        imageSize: image.length
+      });
+
+      const response = await axios.post("/api/verify-medication", {
         image,
-        medicationId: 'identification-only',
-        patientId: user.id || user.RowKey
+        medicationId,
+        patientId: userPatientId
       });
       
-      const { pill_name, confidence, message } = response.data;
+      const result = response.data;
+      console.log('Verification API response:', result);
       
-      if (!response.data.verified) {
-        setMessage(message || "No pill detected. Please try again.");
+      if (!result.verified || result.confidence < 0.8) {
+        const errorMessage = result.message ||
+          `Pill verification failed. ${result.pill_name ? `Detected: ${result.pill_name}` : 'No pill detected'}. Please try again with better lighting.`;
+        
+        setMessage(errorMessage);
+        
+        if (onVerificationError) {
+          onVerificationError(
+            'verification',
+            'VerificationFailed',
+            errorMessage,
+            true,
+            result // Pass the result even when verification fails
+          );
+        }
         return;
       }
 
-      setMessage(`Identified as: ${pill_name} (Confidence: ${(confidence * 100).toFixed(2)}%)`);
+      setMessage(`Identified as: ${result.pill_name} (Confidence: ${(result.confidence * 100).toFixed(2)}%)`);
+      
+      // If confidence is high enough and we have a callback, call it
+      if (result.confidence >= 0.8 && onVerificationSuccess) {
+        onVerificationSuccess(result);
+      }
     } catch (error) {
       console.error("Error:", error);
       setMessage("Unable to process image. Please ensure good lighting and try again.");
+      
+      if (onVerificationError) {
+        onVerificationError(
+          'network',
+          'ApiError',
+          "Unable to process image. Please ensure good lighting and try again.",
+          true
+        );
+      }
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // Function to check if the image has low light conditions
+  const checkLowLightCondition = async (imageDataUrl: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      try {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(false);
+            return;
+          }
+          
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+          
+          // Calculate average brightness
+          let totalBrightness = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            // Convert RGB to brightness using standard luminance formula
+            const brightness = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            totalBrightness += brightness;
+          }
+          
+          const avgBrightness = totalBrightness / (data.length / 4);
+          console.log('Average image brightness:', avgBrightness);
+          
+          // Consider low light if average brightness is below threshold
+          // Threshold can be adjusted based on testing
+          const isLowLight = avgBrightness < 80;
+          resolve(isLowLight);
+        };
+        
+        img.onerror = () => {
+          console.error('Error loading image for light analysis');
+          resolve(false);
+        };
+        
+        img.src = imageDataUrl;
+      } catch (error) {
+        console.error('Error analyzing image brightness:', error);
+        resolve(false);
+      }
+    });
   };
 
   const captureImage = async (): Promise<string | null> => {
@@ -191,8 +377,8 @@ export default function PillIdentification() {
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold mb-4">Pill Identification</h2>
+    <div className={`${isModal ? '' : 'bg-white p-6 rounded-lg shadow-md'}`}>
+      {!isModal && <h2 className="text-2xl font-bold mb-4">Pill Identification</h2>}
       
       {/* Permission Status Banner */}
       {permissionState === 'denied' && (
@@ -242,52 +428,59 @@ export default function PillIdentification() {
         )}
       </div>
 
-      {/* Controls */}
-      <div className="space-y-4">
-        {!isCameraActive ? (
-          <button
-            onClick={permissionState === 'denied' ? requestCameraPermission : startCamera}
-            disabled={isLoading}
-            className={`w-full py-2 px-4 rounded-md text-white font-medium ${
-              isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
-            }`}
-          >
-            {isLoading ? 'Starting Camera...' : 
-             permissionState === 'denied' ? 'Enable Camera' : 'Start Camera'}
-          </button>
-        ) : (
-          <>
+      {/* Controls - conditionally hide */}
+      {!hideControls && (
+        <div className="space-y-4">
+          {!isCameraActive ? (
             <button
-              onClick={captureAndIdentify}
-              disabled={isProcessing}
+              onClick={permissionState === 'denied' ? requestCameraPermission : startCamera}
+              disabled={isLoading}
               className={`w-full py-2 px-4 rounded-md text-white font-medium ${
-                isProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
+                isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
               }`}
             >
-              {isProcessing ? 'Processing...' : 'Capture & Identify'}
+              {isLoading ? 'Starting Camera...' : 
+               permissionState === 'denied' ? 'Enable Camera' : 'Start Camera'}
             </button>
-            
-            <button
-              onClick={stopCamera}
-              className="w-full py-2 px-4 rounded-md text-gray-700 font-medium border border-gray-300 hover:bg-gray-50"
-            >
-              Stop Camera
-            </button>
-          </>
-        )}
+          ) : (
+            <>
+              <button
+                onClick={captureAndIdentify}
+                disabled={isProcessing}
+                className={`w-full py-2 px-4 rounded-md text-white font-medium ${
+                  isProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
+                }`}
+              >
+                {isProcessing ? 'Processing...' : 'Capture & Identify'}
+              </button>
+              
+              <button
+                onClick={stopCamera}
+                className="w-full py-2 px-4 rounded-md text-gray-700 font-medium border border-gray-300 hover:bg-gray-50"
+              >
+                Stop Camera
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
-        {message && (
-          <div className={`p-4 rounded-md ${
-            message.includes('Error') || message.includes('denied') || message.includes('failed')
-              ? 'bg-red-50 text-red-700'
-              : message.includes('ready')
-                ? 'bg-green-50 text-green-700'
-                : 'bg-blue-50 text-blue-700'
-          }`}>
-            {message}
-          </div>
-        )}
-      </div>
+      {message && (
+        <div className={`p-4 rounded-md ${
+          message.includes('Error') || message.includes('denied') || message.includes('failed')
+            ? 'bg-red-50 text-red-700'
+            : message.includes('ready')
+              ? 'bg-green-50 text-green-700'
+              : 'bg-blue-50 text-blue-700'
+        }`}>
+          {message}
+        </div>
+      )}
     </div>
   );
-} 
+});
+
+// Add display name for better debugging
+PillIdentification.displayName = 'PillIdentification';
+
+export default PillIdentification;

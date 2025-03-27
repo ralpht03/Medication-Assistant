@@ -13,7 +13,8 @@ import {
   Bell,
   HelpCircle,
   Bot,
-  Mail
+  Mail,
+  Camera
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -36,9 +37,10 @@ export default function Sidebar() {
       { name: 'Dashboard', href: '/patient/dashboard', icon: Home },
       { name: 'Medications', href: '/patient/medications', icon: Info },
       { name: 'Schedule', href: '/patient/schedule', icon: Calendar },
-      { name: 'Invitations', href: '/patient/invitations', icon: Mail },
-      { name: 'Notifications', href: '/patient/notifications', icon: Bell },
+      { name: 'Pill Identification', href: '/patient/camera', icon: Camera },
       { name: 'AI Assistant', href: '/patient/ai-assistant', icon: Bot },
+      { name: 'Notifications', href: '/patient/notifications', icon: Bell },
+      { name: 'Invitations', href: '/patient/invitations', icon: Mail },
       { name: 'Help & Support', href: '/patient/help', icon: HelpCircle },
       { name: 'Settings', href: '/patient/settings', icon: Settings },
     ],
