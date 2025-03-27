@@ -212,6 +212,29 @@ const PillIdentification = forwardRef<PillIdentificationRef, PillIdentificationP
         throw new Error("Failed to capture image");
       }
 
+      // Check for low light conditions before sending to API
+      if (isOpenCVReady) {
+        try {
+          const lowLightDetected = await checkLowLightCondition(image);
+          if (lowLightDetected) {
+            setMessage("Low light detected. Please ensure the pill is in a well-lit area for accurate identification.");
+            
+            if (onVerificationError) {
+              onVerificationError(
+                'verification',
+                'LowLightCondition',
+                "Low light detected. Please ensure the pill is in a well-lit area for accurate identification.",
+                true
+              );
+            }
+            return;
+          }
+        } catch (e) {
+          console.log("Error checking light conditions:", e);
+          // Continue with verification even if light check fails
+        }
+      }
+
       // Get patientId from props or localStorage
       const userPatientId = patientId || (() => {
         const userStr = localStorage.getItem('user');
@@ -224,24 +247,31 @@ const PillIdentification = forwardRef<PillIdentificationRef, PillIdentificationP
         throw new Error("User session not found");
       }
 
-      const response = await axios.post("/api/verify-medication", { 
+      console.log('Sending verification request:', {
+        medicationId,
+        patientId: userPatientId,
+        imageSize: image.length
+      });
+
+      const response = await axios.post("/api/verify-medication", {
         image,
         medicationId,
         patientId: userPatientId
       });
       
       const result = response.data;
+      console.log('Verification API response:', result);
       
       if (!result.verified || result.confidence < 0.8) {
-        const errorMessage = result.message || 
+        const errorMessage = result.message ||
           `Pill verification failed. ${result.pill_name ? `Detected: ${result.pill_name}` : 'No pill detected'}. Please try again with better lighting.`;
         
         setMessage(errorMessage);
         
         if (onVerificationError) {
           onVerificationError(
-            'verification', 
-            'VerificationFailed', 
+            'verification',
+            'VerificationFailed',
             errorMessage,
             true,
             result // Pass the result even when verification fails
@@ -262,8 +292,8 @@ const PillIdentification = forwardRef<PillIdentificationRef, PillIdentificationP
       
       if (onVerificationError) {
         onVerificationError(
-          'network', 
-          'ApiError', 
+          'network',
+          'ApiError',
           "Unable to process image. Please ensure good lighting and try again.",
           true
         );
@@ -271,6 +301,56 @@ const PillIdentification = forwardRef<PillIdentificationRef, PillIdentificationP
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // Function to check if the image has low light conditions
+  const checkLowLightCondition = async (imageDataUrl: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      try {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(false);
+            return;
+          }
+          
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+          
+          // Calculate average brightness
+          let totalBrightness = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            // Convert RGB to brightness using standard luminance formula
+            const brightness = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            totalBrightness += brightness;
+          }
+          
+          const avgBrightness = totalBrightness / (data.length / 4);
+          console.log('Average image brightness:', avgBrightness);
+          
+          // Consider low light if average brightness is below threshold
+          // Threshold can be adjusted based on testing
+          const isLowLight = avgBrightness < 80;
+          resolve(isLowLight);
+        };
+        
+        img.onerror = () => {
+          console.error('Error loading image for light analysis');
+          resolve(false);
+        };
+        
+        img.src = imageDataUrl;
+      } catch (error) {
+        console.error('Error analyzing image brightness:', error);
+        resolve(false);
+      }
+    });
   };
 
   const captureImage = async (): Promise<string | null> => {
@@ -385,7 +465,7 @@ const PillIdentification = forwardRef<PillIdentificationRef, PillIdentificationP
         </div>
       )}
 
-      {message && !hideControls && (
+      {message && (
         <div className={`p-4 rounded-md ${
           message.includes('Error') || message.includes('denied') || message.includes('failed')
             ? 'bg-red-50 text-red-700'

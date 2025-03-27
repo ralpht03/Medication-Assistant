@@ -53,6 +53,7 @@ export default function CameraModal({
 
   // Handle successful verification
   const handleVerificationSuccess = (result: any) => {
+    console.log('Verification successful:', result);
     setVerificationComplete(true);
     setVerificationResult(result);
     setShowPillCounter(true);
@@ -61,18 +62,31 @@ export default function CameraModal({
     // Reset failed attempts
     setFailedAttempts(0);
     
-    // Stop the camera after successful verification
-    if (pillIdentificationRef.current && pillIdentificationRef.current.stopCamera) {
-      pillIdentificationRef.current.stopCamera();
-    }
+    // Don't stop the camera immediately to allow user to see the success message
+    setTimeout(() => {
+      if (pillIdentificationRef.current && pillIdentificationRef.current.stopCamera) {
+        pillIdentificationRef.current.stopCamera();
+      }
+    }, 1500);
   };
 
   // Handle verification error
   const handleVerificationError = (type: 'camera' | 'network' | 'verification' | 'user', code: string, message: string, recoverable = true, result: any = null) => {
+    console.log('Verification error:', { type, code, message, recoverable, result });
+    
+    // Check if this is a low light condition
+    const isLowLight = message.toLowerCase().includes('lighting') ||
+                      (result && result.confidence && result.confidence < 0.5);
+    
+    // Create a more user-friendly message for low light conditions
+    const enhancedMessage = isLowLight
+      ? "Low light detected. Please ensure the pill is in a well-lit area for accurate identification."
+      : message;
+    
     setError({
       type,
       code,
-      message,
+      message: enhancedMessage,
       recoverable,
       retryCount: error && error.type === type ? error.retryCount + 1 : 0
     });
@@ -86,13 +100,27 @@ export default function CameraModal({
     if (type === 'verification') {
       setFailedAttempts(prev => prev + 1);
     }
+    
+    // Don't automatically hide the error message
+    // Keep the camera active for another attempt if recoverable
+    if (!recoverable && pillIdentificationRef.current && pillIdentificationRef.current.stopCamera) {
+      pillIdentificationRef.current.stopCamera();
+    }
   };
 
   // Handle pill count confirmation
   const handlePillCountConfirm = async () => {
     try {
+      console.log('Confirming pill count:', {
+        medicationId: medication.id,
+        patientId: medication.patientId,
+        pillCount,
+        recommendedCount,
+        bypassVerification
+      });
+      
       // Record adherence with pill count
-      await fetch("/api/adherence", {
+      const response = await fetch("/api/adherence", {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -101,12 +129,15 @@ export default function CameraModal({
           pillCount: pillCount,
           recommendedCount: recommendedCount,
           status: 'taken',
-          notes: bypassVerification 
-            ? 'Taken via bypass after failed verification attempts' 
+          notes: bypassVerification
+            ? 'Taken via bypass after failed verification attempts'
             : 'Taken via camera verification',
           bypassVerification: bypassVerification
         })
       });
+      
+      const result = await response.json();
+      console.log('Adherence API response:', result);
       
       // Call the onTakeMedication callback to refresh the dashboard
       onTakeMedication();
@@ -165,8 +196,8 @@ export default function CameraModal({
           </button>
         </div>
         
-        {/* Error display */}
-        {error && (
+        {/* Error display for non-verification errors */}
+        {error && error.type !== 'verification' && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
             <div className="flex items-start">
               <div className="flex-shrink-0">
@@ -175,7 +206,8 @@ export default function CameraModal({
                 </svg>
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">{error.message}</h3>
+                <h3 className="text-sm font-medium text-red-800">Error</h3>
+                <p className="text-sm text-red-700 mt-1">{error.message}</p>
                 {verificationResult && (
                   <p className="text-sm text-red-700 mt-1">
                     Detected: {verificationResult.pill_name} (Confidence: {(verificationResult.confidence * 100).toFixed(2)}%)
@@ -184,8 +216,16 @@ export default function CameraModal({
                 {error.recoverable && (
                   <div className="mt-2">
                     <button
-                      onClick={() => setError(null)}
-                      className="text-sm text-red-600 hover:text-red-500"
+                      onClick={() => {
+                        setError(null);
+                        // If camera error, try to restart camera
+                        if (error.type === 'camera' && pillIdentificationRef.current) {
+                          setTimeout(() => {
+                            pillIdentificationRef.current?.startCamera();
+                          }, 500);
+                        }
+                      }}
+                      className="text-sm px-3 py-1 rounded bg-red-100 text-red-800 hover:bg-red-200"
                     >
                       Try again
                     </button>
@@ -225,7 +265,7 @@ export default function CameraModal({
           {/* Camera section - always visible unless bypassed */}
           {(!bypassVerification || verificationComplete) && (
             <div className={`${showPillCounter ? 'w-1/2' : 'w-full'}`}>
-              <PillIdentification 
+              <PillIdentification
                 ref={pillIdentificationRef}
                 medicationId={medication?.id}
                 patientId={medication?.patientId}
@@ -238,9 +278,49 @@ export default function CameraModal({
               {verificationComplete && verificationResult && (
                 <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-md">
                   <p className="text-green-700">
-                    ✓ Pill verified: {verificationResult.pill_name} 
+                    ✓ Pill verified: {verificationResult.pill_name}
                     (Confidence: {Math.round(verificationResult.confidence * 100)}%)
                   </p>
+                </div>
+              )}
+              
+              {/* Additional error display for verification errors */}
+              {error && error.type === 'verification' && (
+                <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-yellow-800">Verification Issue</h3>
+                      <p className="text-sm text-yellow-700 mt-1">
+                        {error.message}
+                      </p>
+                      <p className="text-sm text-yellow-700 mt-1">
+                        Please ensure good lighting and that the pill is clearly visible in the center of the frame.
+                      </p>
+                      {error.recoverable && (
+                        <div className="mt-2">
+                          <button
+                            onClick={() => {
+                              setError(null);
+                              // Try to capture again
+                              if (pillIdentificationRef.current) {
+                                setTimeout(() => {
+                                  pillIdentificationRef.current?.captureAndIdentify();
+                                }, 500);
+                              }
+                            }}
+                            className="text-sm px-3 py-1 rounded bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
+                          >
+                            Try again
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

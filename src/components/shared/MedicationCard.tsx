@@ -16,9 +16,10 @@ const statusConfig: Record<MedicationStatus, {
 };
 
 interface MedicationCardProps {
-  medication: Medications & { 
+  medication: Medications & {
     status: MedicationStatus;
     time: string;
+    id?: string; // Add optional id property
   };
   showActions?: boolean;
   onTake?: () => void;
@@ -87,10 +88,10 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
         isOpen={showCameraModal}
         onClose={handleModalClose}
         medication={{
-          id: medication.RowKey,
+          id: medication.id || medication.RowKey, // Use id if available, fallback to RowKey
           name: medication.name,
           dosage: medication.dosage,
-          patientId: medication.patientId
+          patientId: medication.patientId || medication.PartitionKey // Use patientId if available, fallback to PartitionKey
         }}
         onTakeMedication={handleMedicationTaken}
       />

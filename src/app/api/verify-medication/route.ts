@@ -51,12 +51,22 @@ const PREDICTION_KEY = process.env.CUSTOM_VISION_KEY;
 
 export async function POST(request: Request) {
   try {
-    const { image, medicationId, patientId } = await request.json();
+    console.log('Verify medication API called');
+    const requestData = await request.json();
+    const { image, medicationId, patientId } = requestData;
+    
+    console.log('Verify medication request:', {
+      medicationId,
+      patientId,
+      imageSize: image ? image.length : 0
+    });
     
     // Convert base64 to buffer
     const imageBuffer = Buffer.from(image.split(',')[1], 'base64');
+    console.log('Image buffer size:', imageBuffer.length);
 
     // Make the prediction request using fetch
+    console.log('Making prediction request to:', process.env.CUSTOM_VISION_ENDPOINT);
     const response = await fetch(process.env.CUSTOM_VISION_ENDPOINT!, {
       method: 'POST',
       headers: {
@@ -77,6 +87,7 @@ export async function POST(request: Request) {
     }
 
     const results = await response.json();
+    console.log('Prediction API response:', results);
 
     // Process predictions
     const predictions = results.predictions || [];
@@ -84,6 +95,7 @@ export async function POST(request: Request) {
 
     // If no predictions were found
     if (!topPrediction) {
+      console.log('No predictions found');
       return NextResponse.json({
         verified: false,
         pill_name: 'unknown',
@@ -96,16 +108,19 @@ export async function POST(request: Request) {
       verified: topPrediction.probability > 0.75,
       pill_name: topPrediction.tagName,
       confidence: topPrediction.probability,
-      message: topPrediction.probability > 0.75 
+      message: topPrediction.probability > 0.75
         ? `Successfully identified as ${topPrediction.tagName}`
         : 'Low confidence detection. Please try again with better lighting'
     };
+    
+    console.log('Verification result:', result);
 
     // Log verification attempt
+    const timestamp = new Date().toISOString();
     const verificationLog: VerificationLogs = {
       PartitionKey: patientId,
-      RowKey: new Date().toISOString(),
-      Timestamp: new Date().toISOString(),
+      RowKey: timestamp,
+      Timestamp: timestamp,
       patientId,
       method: 'image',
       verified: result.verified,
@@ -117,21 +132,32 @@ export async function POST(request: Request) {
       helperConfirmation: false
     };
 
+    console.log('Saving verification log:', {
+      patientId,
+      medicationId,
+      verified: result.verified,
+      timestamp
+    });
+
     // Store verification log in Azure
     const tableService = new AzureTableService('VerificationLogs');
     await tableService.createEntity(verificationLog);
+    console.log('Verification log saved successfully');
 
     return NextResponse.json(result);
   } catch (error) {
     console.error("Pill verification error:", error);
+    const errorResult = {
+      error: error instanceof Error ? error.message : "Failed to verify medication",
+      message: "Unable to process image. Please try again.",
+      verified: false,
+      pill_name: 'unknown',
+      confidence: 0
+    };
+    console.log('Returning error response:', errorResult);
+    
     return NextResponse.json(
-      { 
-        error: error instanceof Error ? error.message : "Failed to verify medication",
-        message: "Unable to process image. Please try again.",
-        verified: false,
-        pill_name: 'unknown',
-        confidence: 0
-      },
+      errorResult,
       { status: 200 } // Return 200 even for processing errors
     );
   }

@@ -214,21 +214,18 @@ export default function DashboardPage() {
 
   const handleMedicationAction = async (medicationId: string, action: 'take' | 'snooze') => {
     try {
-      if (action === 'take') {
-        await fetch('/api/adherence', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            medicationId: String(medicationId),
-            status: 'taken',
-            notes: 'Taken via dashboard'
-          })
-        })
+      if (action === 'snooze') {
+        // Handle snooze action if needed
+        console.log('Medication snoozed:', medicationId);
       }
       
-      await fetchDashboardData()
+      // For 'take' action, we don't need to do anything here
+      // The CameraModal component will handle the API call with pill verification data
+      
+      // Refresh dashboard data after action
+      await fetchDashboardData();
     } catch (error) {
-      console.error('Error handling medication action:', error)
+      console.error('Error handling medication action:', error);
     }
   }
 
