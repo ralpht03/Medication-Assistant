@@ -604,6 +604,12 @@ export class PrescriptionOCR {
     if (!prescription.patientName) {
       prescription.errorMessages.push('Could not detect patient name');
     }
+    // hard codes Patient information
+    // temporary fix 
+    //TODO: implement a better way to get patient information
+    if (prescription.patientName!= "John Doe") {
+      prescription.errorMessages.push('This is not the correct patient');
+    }
     
     // Check date validity
     if (!prescription.isDateValid) {
