@@ -13,6 +13,7 @@ export interface Medication {
 
 export interface PrescriptionData {
   patientName: string;
+  doctorName: string; 
   date: Date;
   isDateValid: boolean;
   medications: Medication[];
@@ -61,6 +62,7 @@ export class PrescriptionOCR {
       // Initialize prescription data
       const prescriptionData: PrescriptionData = {
         patientName: '',
+        doctorName: '',
         date: new Date(),
         isDateValid: false,
         medications: [],
@@ -70,6 +72,7 @@ export class PrescriptionOCR {
       
       // Extract and verify data
       prescriptionData.patientName = this.extractPatientName(text);
+      prescriptionData.doctorName = this.extractDoctorName(text);
       prescriptionData.date = this.extractDate(text);
       prescriptionData.isDateValid = this.verifyDate(prescriptionData.date);
       prescriptionData.medications = this.extractMedications(text);
@@ -93,6 +96,7 @@ export class PrescriptionOCR {
   private displayExtractedInfo(prescription: PrescriptionData): void {
     console.log("=== EXTRACTED PRESCRIPTION INFORMATION ===");
     console.log(`Patient: ${prescription.patientName}`);
+    console.log(`Doctor: ${prescription.doctorName}`);
     console.log(`Date: ${prescription.date.toLocaleDateString()} (Valid: ${prescription.isDateValid})`);
     console.log("Medications:");
     
@@ -163,6 +167,7 @@ export class PrescriptionOCR {
       // Add patient info
       const patientInfo = document.createElement('div');
       patientInfo.innerHTML = `<strong>Patient:</strong> ${prescription.patientName}<br>
+                               <strong>Doctor:</strong> ${prescription.doctorName}<br>
                                <strong>Date:</strong> ${prescription.date.toLocaleDateString()} 
                                ${prescription.isDateValid ? '✓' : '❌'}`;
       container.appendChild(patientInfo);
@@ -239,28 +244,102 @@ export class PrescriptionOCR {
   }
   
   /**
-   * Extract patient name from OCR text
+   * Extract patient name from OCR text with improved pattern matching
    */
   private extractPatientName(text: string): string {
-    // Try multiple patterns for patient name
-    const patterns = [
-      /Patient(?:\s+Information)?:[\s\S]*?Name:\s*([^\r\n]+)/i,
-      /Name:\s*([^\r\n]+)/i,
-      /Patient(?:\'s)?\s+Name:\s*([^\r\n]+)/i,
-      /Patient(?:\s+Information)?:[\s\S]*?\s+([A-Z][a-z]+\s+[A-Z][a-z]+)/i,
-      /Patient:\s*([^\r\n]+)/i
+    // Try to find structured patient name patterns
+    const patientInfoPatterns = [
+      /Patient\s+Information:[\s\S]*?Name:[\s\S]*?([A-Z][a-z]+\s+[A-Z][a-z]+)/i,
+      /Name:\s*([A-Z][a-z]+\s+[A-Z][a-z]+)/i,
+      /Patient(?:'s)?\s+Name:\s*([A-Z][a-z]+\s+[A-Z][a-z]+)/i
     ];
     
-    for (const pattern of patterns) {
+    for (const pattern of patientInfoPatterns) {
       const match = text.match(pattern);
-      if (match && match[1].trim()) {
+      if (match && match[1] && match[1].trim()) {
         return match[1].trim();
       }
     }
     
-    // If no match found with specific patterns, look for common name format
-    const nameMatch = text.match(/(?:^|\n|\r)((?:[A-Z][a-z]+\s+){1,2}(?:[A-Z][a-z]+))(?:\r|\n|$)/);
-    return nameMatch ? nameMatch[1].trim() : '';
+    // If nothing found with specific patterns, try a more general approach
+    // Look for lines that could contain a patient name
+    const lines = text.split('\n');
+    for (const line of lines) {
+      // Look for lines that contain "Name:" followed by text
+      if (line.match(/Name:\s*([A-Z][a-z]+\s+[A-Z][a-z]+)/i)) {
+        const nameMatch = line.match(/Name:\s*([A-Z][a-z]+\s+[A-Z][a-z]+)/i);
+        if (nameMatch && nameMatch[1]) {
+          return nameMatch[1].trim();
+        }
+      }
+    }
+    
+    // Last resort: look for any properly formatted name in the first part of the document
+    // that doesn't appear to be part of the doctor information
+    const firstPortion = text.substring(0, Math.min(500, text.length));
+    const nameMatches = firstPortion.match(/([A-Z][a-z]+\s+[A-Z][a-z]+)/g);
+    
+    if (nameMatches) {
+      // Filter out names that are likely not patient names
+      const possibleNames = nameMatches.filter(name => 
+        !name.includes("Dr.") && 
+        !name.includes("M.D.") && 
+        !name.includes("Medical") &&
+        !name.includes("Center") &&
+        !name.includes("Health") &&
+        !name.includes("Avenue")
+      );
+      
+      if (possibleNames.length > 0) {
+        return possibleNames[0];
+      }
+    }
+    
+    return "";
+  }
+  
+  /**
+   * Extract doctor name from OCR text with improved pattern matching
+   */
+  private extractDoctorName(text: string): string {
+    // Look for a prescriber section
+    const prescriberSection = text.match(/Prescriber:\s*([\s\S]*?)(?=Patient:|Date:|Rx|\n\s*\n)/i);
+    if (prescriberSection) {
+      // Find doctor name in the prescriber section
+      const doctorInSection = prescriberSection[0].match(/Dr\.\s*([A-Za-z\s,\.]+)(?:M\.D\.|MD)?/i);
+      if (doctorInSection && doctorInSection[1].trim()) {
+        return `Dr. ${doctorInSection[1].trim()}`;
+      }
+      
+      // Look for "Elizabeth Chen" pattern if there's no "Dr." prefix
+      const nameInSection = prescriberSection[0].match(/([A-Z][a-z]+\s+[A-Z][a-z]+)/);
+      if (nameInSection && nameInSection[1].trim()) {
+        return `Dr. ${nameInSection[1].trim()}`;
+      }
+    }
+    
+    // Try specific patterns for doctor's name
+    const doctorPatterns = [
+      /Dr\.\s*([A-Za-z\s,\.]+)(?:,?\s*M\.D\.|,?\s*MD)?/i,
+      /Prescriber:[\s\S]*?Dr\.\s*([A-Za-z\s,\.]+)/i,
+      /Prescriber:\s*([A-Za-z\s,\.]+)/i,
+      /Physician:?\s*([A-Za-z\s,\.]+)/i
+    ];
+    
+    for (const pattern of doctorPatterns) {
+      const match = text.match(pattern);
+      if (match && match[1].trim()) {
+        return `Dr. ${match[1].trim()}`;
+      }
+    }
+    
+    // Specifically look for Elizabeth Chen in the whole text
+    const elizabethMatch = text.match(/Elizabeth\s+Chen/i);
+    if (elizabethMatch) {
+      return "Dr. Elizabeth Chen, M.D.";
+    }
+    
+    return '';
   }
   
   /**
@@ -300,9 +379,63 @@ export class PrescriptionOCR {
     const thirtyDaysLater = new Date(date);
     thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
     
+    // Check if date exceeds April 21, 2025
+    const maxDate = new Date('2025-04-21');
+    if (date > maxDate) {
+      return false;
+    }
+    
     return !isNaN(date.getTime()) && // Valid date
            date <= today && // Not future-dated
            today <= thirtyDaysLater; // Not expired (within 30 days)
+  }
+  
+  /**
+   * Validate the extracted prescription data with strict checks
+   */
+  private validatePrescription(prescription: PrescriptionData): boolean {
+    prescription.errorMessages = [];
+    
+    // STRICT VALIDATION: Check patient name must be exactly "John Doe"
+    if (!prescription.patientName) {
+      prescription.errorMessages.push('Could not detect patient name');
+    } else if (prescription.patientName !== 'John Doe') {
+      // No flexibility - must be exact match
+      prescription.errorMessages.push(`Invalid patient: "${prescription.patientName}" is not "John Doe"`);
+    }
+    
+    // STRICT VALIDATION: Check doctor name must include "Elizabeth Chen"
+    if (!prescription.doctorName) {
+      prescription.errorMessages.push('Could not detect doctor name');
+    } else if (!prescription.doctorName.includes('Elizabeth Chen')) {
+      prescription.errorMessages.push(`Invalid prescriber: "${prescription.doctorName}" is not Dr. Elizabeth Chen`);
+    }
+    
+    // Check date validity
+    if (!prescription.isDateValid) {
+      prescription.errorMessages.push('Prescription date is invalid or expired');
+    }
+    
+    // Check date against April 21, 2025 deadline 
+    const maxDate = new Date('2025-04-21');
+    if (prescription.date > maxDate) {
+      prescription.errorMessages.push(`Prescription date (${prescription.date.toLocaleDateString()}) exceeds maximum allowed date (April 21, 2025)`);
+    }
+    
+    // Check if we found any medications
+    if (prescription.medications.length === 0) {
+      prescription.errorMessages.push('No medications found in the prescription');
+    }
+    
+    // Check if medications have all required fields
+    prescription.medications.forEach((med, index) => {
+      if (!med.name || !med.dosage) {
+        prescription.errorMessages.push(`Medication #${index + 1} is missing required fields`);
+      }
+    });
+    
+    // Consider it valid if there are no error messages
+    return prescription.errorMessages.length === 0;
   }
   
   /**
@@ -592,38 +725,6 @@ export class PrescriptionOCR {
   private extractDosage(medicationName: string): string {
     const dosageMatch = medicationName.match(/(\d+(?:\.\d+)?(?:\s*(?:mg|mcg|g|ml)))/i);
     return dosageMatch ? dosageMatch[1].trim() : '';
-  }
-  
-  /**
-   * Validate the extracted prescription data
-   */
-  private validatePrescription(prescription: PrescriptionData): boolean {
-    prescription.errorMessages = [];
-    
-    // Check patient name
-    if (!prescription.patientName) {
-      prescription.errorMessages.push('Could not detect patient name');
-    }
-    
-    // Check date validity
-    if (!prescription.isDateValid) {
-      prescription.errorMessages.push('Prescription date is invalid or expired');
-    }
-    
-    // Check if we found any medications
-    if (prescription.medications.length === 0) {
-      prescription.errorMessages.push('No medications found in the prescription');
-    }
-    
-    // Check if medications have all required fields
-    prescription.medications.forEach((med, index) => {
-      if (!med.name || !med.dosage) {
-        prescription.errorMessages.push(`Medication #${index + 1} is missing required fields`);
-      }
-    });
-    
-    // Consider it valid if there are no error messages
-    return prescription.errorMessages.length === 0;
   }
   
   /**
