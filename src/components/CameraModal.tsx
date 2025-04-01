@@ -56,7 +56,9 @@ export default function CameraModal({
     console.log('Verification successful:', result);
     setVerificationComplete(true);
     setVerificationResult(result);
-    setShowPillCounter(true);
+    // Only show pill counter if the correct pill is identified
+    const isPillCorrect = result.pill_name.toLowerCase() === medication?.name.toLowerCase();
+    setShowPillCounter(isPillCorrect);
     // Clear any previous errors
     setError(null);
     // Reset failed attempts
@@ -276,11 +278,30 @@ export default function CameraModal({
               />
               
               {verificationComplete && verificationResult && (
-                <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-md">
-                  <p className="text-green-700">
-                    ✓ Pill verified: {verificationResult.pill_name}
-                    (Confidence: {Math.round(verificationResult.confidence * 100)}%)
-                  </p>
+                <div className={`mt-4 p-4 ${verificationResult.pill_name.toLowerCase() === medication?.name.toLowerCase() 
+                  ? 'bg-green-50 border-green-200' 
+                  : 'bg-red-50 border-red-200'} border rounded-md`}>
+                  <div className="flex items-start">
+                    {verificationResult.pill_name.toLowerCase() === medication?.name.toLowerCase() ? (
+                      <p className="text-green-700">
+                        ✓ Pill verified: {verificationResult.pill_name}
+                        (Confidence: {Math.round(verificationResult.confidence * 100)}%)
+                      </p>
+                    ) : (
+                      <div className="flex items-start">
+                        <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mr-2" />
+                        <div>
+                          <p className="text-red-700 font-medium">
+                            ✗ Incorrect pill detected: {verificationResult.pill_name}
+                            (Confidence: {verificationResult.confidence * 100}%)
+                          </p>
+                          <p className="text-red-600 text-sm mt-1">
+                            This does not match your prescribed medication: {medication?.name}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               

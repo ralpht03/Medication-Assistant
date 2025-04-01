@@ -1,4 +1,4 @@
-import { TableClient } from "@azure/data-tables";
+import { TableClient, TableEntity } from "@azure/data-tables";
 
 /**
  * Creates a TableClient for interacting with Azure Table Storage
@@ -98,7 +98,7 @@ export class AzureTableService {
    * @param rowKey Row key
    * @returns The entity or null if not found
    */
-  async getEntity<T>(partitionKey: string, rowKey: string): Promise<T | null> {
+  async getEntity<T extends object>(partitionKey: string, rowKey: string): Promise<T | null> {
     try {
       return await this.tableClient.getEntity<T>(partitionKey, rowKey);
     } catch (error: any) {
@@ -114,7 +114,7 @@ export class AzureTableService {
    * @param entity The entity to create
    * @returns The created entity
    */
-  async createEntity<T>(entity: T): Promise<T> {
+  async createEntity<T extends TableEntity<object>>(entity: T): Promise<T> {
     await this.tableClient.createEntity(entity);
     return entity;
   }
@@ -124,7 +124,7 @@ export class AzureTableService {
    * @param entity The entity to update
    * @returns The updated entity
    */
-  async updateEntity<T>(entity: T): Promise<T> {
+  async updateEntity<T extends TableEntity<object>>(entity: T): Promise<T> {
     await this.tableClient.updateEntity(entity, "Merge");
     return entity;
   }
@@ -152,7 +152,7 @@ export class AzureTableService {
    * @param filter OData filter string
    * @returns Array of entities
    */
-  async queryEntities<T>(filter: string): Promise<T[]> {
+  async queryEntities<T extends object>(filter: string): Promise<T[]> {
     const entities: T[] = [];
     const queryOptions = { filter };
     

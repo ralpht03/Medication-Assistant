@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { AzureTableService } from '@/lib/azure/table-service'
+import jwt from 'jsonwebtoken'
 
 // Initialize the users table service with error handling
 let usersTable: AzureTableService;
@@ -54,17 +55,50 @@ export async function POST(request: Request) {
       // Log the user object to debug
       console.log('User found:', user);
       
-      // Return user data without sensitive information
-      // Handle different possible casings of properties
-      return NextResponse.json({
+      // Get user properties with proper casing
+      const userId = user.rowKey || user.RowKey;
+      const userEmail = user.email || user.Email;
+      const userRole = user.role || user.Role || user.partitionKey || user.PartitionKey;
+      
+      // Generate JWT token
+      const secret = process.env.JWT_SECRET;
+      if (!secret) {
+        throw new Error('JWT_SECRET is not defined');
+      }
+      
+      const token = jwt.sign(
+        {
+          id: userId,
+          userId: userId, // Include both for compatibility
+          email: userEmail,
+          role: userRole
+        },
+        secret,
+        { expiresIn: '7d' } // Set to 7 days
+      );
+      
+      // Create response with user data
+      const response = NextResponse.json({
         user: {
-          id: user.rowKey || user.RowKey,
-          email: user.email || user.Email,
-          role: user.role || user.Role || user.partitionKey || user.PartitionKey,
+          id: userId,
+          email: userEmail,
+          role: userRole,
           firstName: user.firstName || user.FirstName,
           lastName: user.lastName || user.LastName
         }
       });
+      
+      // Set token as cookie
+      response.cookies.set({
+        name: 'token',
+        value: token,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 // 7 days in seconds
+      });
+      
+      return response;
     } catch (queryError) {
       console.error('Error querying user:', queryError);
       return NextResponse.json(

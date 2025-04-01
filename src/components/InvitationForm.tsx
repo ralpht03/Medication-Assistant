@@ -26,7 +26,7 @@ export default function InvitationForm({ inviteeRole }: InvitationFormProps) {
     setSuccess('');
     
     try {
-      const response = await fetch('/api/invitations', {
+      const response = await fetch('/api/admin/invite-patient', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

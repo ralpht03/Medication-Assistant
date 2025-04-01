@@ -38,11 +38,16 @@ interface Alert {
   message: string
 }
 
-const PatientListTable = () => {
+// Add or update the props interface
+interface PatientListTableProps {
+  searchTerm: string;
+}
+
+const PatientListTable = ({ searchTerm: externalSearchTerm }: PatientListTableProps) => {
   const [patients, setPatients] = useState<Patient[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [searchTerm, setSearchTerm] = useState("")
+  const [localSearchTerm, setLocalSearchTerm] = useState(externalSearchTerm)
   const [sortField, setSortField] = useState<string>("lastName")
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
@@ -224,14 +229,20 @@ const PatientListTable = () => {
     handleCloseModal()
   }
 
+  // Use either the external or local search term for filtering
+  const searchTermToUse = externalSearchTerm || localSearchTerm;
+
+  // Filter patients based on search term
+  const filteredPatients = patients.filter(patient => {
+    const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase();
+    const searchLower = searchTermToUse.toLowerCase();
+    return fullName.includes(searchLower) ||
+           patient.name?.toLowerCase().includes(searchLower);
+  });
+
   // Sort and filter patients
   const sortAndFilterPatients = () => {
-    return [...patients]
-      .filter(patient => {
-        const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase()
-        return fullName.includes(searchTerm.toLowerCase()) || 
-               (patient.email && patient.email.toLowerCase().includes(searchTerm.toLowerCase()))
-      })
+    return [...filteredPatients]
       .sort((a, b) => {
         let aValue: any, bValue: any
 
@@ -263,7 +274,7 @@ const PatientListTable = () => {
       })
   }
 
-  const filteredPatients = sortAndFilterPatients()
+  const sortedPatients = sortAndFilterPatients()
 
   return (
     <div className="bg-white rounded-lg shadow-md">
@@ -275,8 +286,8 @@ const PatientListTable = () => {
               type="text"
               placeholder="Search patients..."
               className="pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              value={localSearchTerm}
+              onChange={(e) => setLocalSearchTerm(e.target.value)}
             />
             <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
           </div>
@@ -307,22 +318,22 @@ const PatientListTable = () => {
       )}
 
       {/* Empty state */}
-      {!loading && !error && filteredPatients.length === 0 && (
+      {!loading && !error && sortedPatients.length === 0 && (
         <div className="p-8 text-center">
           <div className="mx-auto h-12 w-12 text-gray-400 mb-4">
             <PlusCircle className="h-full w-full" />
           </div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">No Patients Found</h3>
           <p className="text-gray-600">
-            {searchTerm
-              ? `No patients matching "${searchTerm}" were found.`
+            {searchTermToUse
+              ? `No patients matching "${searchTermToUse}" were found.`
               : "You don't have any linked patients yet."}
           </p>
         </div>
       )}
 
       {/* Patient table */}
-      {!loading && !error && filteredPatients.length > 0 && (
+      {!loading && !error && sortedPatients.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
@@ -360,7 +371,7 @@ const PatientListTable = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredPatients.map((patient) => {
+              {sortedPatients.map((patient) => {
                 const statusInfo = getStatusInfo(patient)
                 return (
                   <tr

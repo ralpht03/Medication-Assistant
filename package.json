@@ -15,7 +15,6 @@
     "@azure/ms-rest-js": "^2.7.0",
     "@azure/openai": "^2.0.0",
     "@azure/storage-blob": "^12.26.0",
-    "@sendgrid/mail": "^8.1.4",
     "@tailwindcss/postcss": "^4.0.8",
     "@techstark/opencv-js": "^4.10.0-release.1",
     "@types/bcrypt": "^5.0.2",
@@ -34,6 +33,7 @@
     "react": "^18.3.1",
     "react-big-calendar": "^1.17.1",
     "react-dom": "^18.3.1",
+    "react-hot-toast": "^2.5.2",
     "react-markdown": "^10.0.0",
     "tesseract.js": "^6.0.0",
     "uuid": "^11.1.0"
