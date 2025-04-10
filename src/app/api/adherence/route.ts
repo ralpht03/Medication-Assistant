@@ -178,43 +178,140 @@ export async function POST(req: Request) {
       // Create alerts for different scenarios
       const alerts = [];
       
-      // If verification was bypassed, create an alert
+      // Get medication details for better alert messages
+      const medicationsTable = createTableClient('Medications');
+      let medicationName = medicationId;
+      try {
+        const medication = await medicationsTable.getEntity(patientId, medicationId);
+        medicationName = medication.name as string || medicationId;
+      } catch (error) {
+        console.warn(`Could not find medication details for ${medicationId}`);
+      }
+      
+      // Get patient details
+      const usersTable = createTableClient('Users');
+      let patientName = patientId;
+      try {
+        const patient = await usersTable.getEntity('USER', patientId);
+        patientName = `${patient.firstName} ${patient.lastName}`;
+      } catch (error) {
+        console.warn(`Could not find patient details for ${patientId}`);
+      }
+      
+      // If verification was bypassed, create alerts for both patient and admin
       if (bypassVerification) {
-        const bypassAlert = {
-          PartitionKey: patientId,
-          RowKey: `bypass-${timestamp}`,
+        // Patient alert
+        const patientBypassAlert = {
+          partitionKey: patientId,
+          rowKey: `bypass-${timestamp}`,
           Timestamp: timestamp,
           userId: patientId,
+          patientId,
           medicationId,
+          medicationName,
           type: 'verification_bypassed',
-          message: `Patient bypassed pill verification for ${medicationId}. Please follow up.`,
+          message: `You bypassed verification for ${medicationName}. Please ensure you're taking the correct medication.`,
           read: false,
           priority: 'high'
         };
         
-        alerts.push(bypassAlert);
+        alerts.push(patientBypassAlert);
+        
+        // Find linked admin(s) for this patient
+        try {
+          // Query for admins linked to this patient
+          const adminFilter = `role eq 'admin' and linkedPatients ne null`;
+          const adminEntities = usersTable.listEntities({ queryOptions: { filter: adminFilter } });
+          
+          for await (const admin of adminEntities) {
+            // Check if this admin is linked to the patient
+            const linkedPatients = admin.linkedPatients ? JSON.parse(admin.linkedPatients as string) : [];
+            if (linkedPatients.includes(patientId)) {
+              const adminBypassAlert = {
+                partitionKey: admin.rowKey as string,
+                rowKey: `patient-bypass-${timestamp}`,
+                Timestamp: timestamp,
+                userId: admin.rowKey as string,
+                patientId,
+                patientName,
+                medicationId,
+                medicationName,
+                type: 'patient_verification_bypassed',
+                message: `Patient ${patientName} bypassed verification for ${medicationName}. Please follow up.`,
+                read: false,
+                priority: 'high'
+              };
+              
+              alerts.push(adminBypassAlert);
+            }
+          }
+        } catch (error) {
+          console.error("Error finding linked admins:", error);
+        }
       }
       
-      // If overdose or underdose, create an alert
+      // If overdose or underdose, create alerts for both patient and admin
       if (isOverdose || isUnderdose) {
         const alertType = isOverdose ? 'overdose' : 'underdose';
-        const alertMessage = isOverdose
-          ? `Patient took ${pillCount} pills instead of the recommended ${recommendedCount} (overdose)`
-          : `Patient took ${pillCount} pills instead of the recommended ${recommendedCount} (underdose)`;
         
-        const doseAlert = {
-          PartitionKey: patientId,
-          RowKey: `${alertType}-${timestamp}`,
+        // Patient alert message
+        const patientAlertMessage = isOverdose
+          ? `You took ${pillCount} pills instead of the recommended ${recommendedCount} for ${medicationName}. This is an overdose. Please contact your healthcare provider immediately.`
+          : `You took ${pillCount} pills instead of the recommended ${recommendedCount} for ${medicationName}. This is less than prescribed.`;
+        
+        // Admin alert message
+        const adminAlertMessage = isOverdose
+          ? `URGENT: Patient ${patientName} took ${pillCount} pills instead of the recommended ${recommendedCount} for ${medicationName} (OVERDOSE).`
+          : `Patient ${patientName} took ${pillCount} pills instead of the recommended ${recommendedCount} for ${medicationName} (underdose).`;
+        
+        // Patient alert
+        const patientDoseAlert = {
+          partitionKey: patientId,
+          rowKey: `${alertType}-${timestamp}`,
           Timestamp: timestamp,
           userId: patientId,
+          patientId,
           medicationId,
+          medicationName,
           type: alertType,
-          message: alertMessage,
+          message: patientAlertMessage,
           read: false,
           priority: isOverdose ? 'critical' : 'high'
         };
         
-        alerts.push(doseAlert);
+        alerts.push(patientDoseAlert);
+        
+        // Find linked admin(s) for this patient
+        try {
+          // Query for admins linked to this patient
+          const adminFilter = `role eq 'admin' and linkedPatients ne null`;
+          const adminEntities = usersTable.listEntities({ queryOptions: { filter: adminFilter } });
+          
+          for await (const admin of adminEntities) {
+            // Check if this admin is linked to the patient
+            const linkedPatients = admin.linkedPatients ? JSON.parse(admin.linkedPatients as string) : [];
+            if (linkedPatients.includes(patientId)) {
+              const adminDoseAlert = {
+                partitionKey: admin.rowKey as string,
+                rowKey: `patient-${alertType}-${timestamp}`,
+                Timestamp: timestamp,
+                userId: admin.rowKey as string,
+                patientId,
+                patientName,
+                medicationId,
+                medicationName,
+                type: `patient_${alertType}`,
+                message: adminAlertMessage,
+                read: false,
+                priority: isOverdose ? 'critical' : 'high'
+              };
+              
+              alerts.push(adminDoseAlert);
+            }
+          }
+        } catch (error) {
+          console.error("Error finding linked admins:", error);
+        }
       }
       
       // Save all alerts
