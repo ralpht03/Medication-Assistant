@@ -1,41 +1,52 @@
 "use client"
 
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import PatientCard from '@/components/shared/PatientCard'
 
-export default function HelperDashboard() {
+
+
+
+interface Patient {
+  id: string;
+  name: string;
+  profilePictureUrl?: string;
+  adherencePercentage: number;
+}
+
+const fetchPatients = async (helperId: string): Promise<Patient[]> => {
+  const response = await fetch(`/api/patients?helperId=${helperId}`);
+  const patients = await response.json();
+  return patients;
+};
+
+const PatientListPage = () => {
+  const router = useRouter();
+  const [patients, setPatients] = useState<Patient[]>([]);
+
+  useEffect(() => {
+    const helper = JSON.parse(localStorage.getItem('user') || '{}');
+    if (helper.accountType !== 'helper') {
+      router.push('/login');
+    } else {
+      fetchPatients(helper.id).then(setPatients);
+    }
+  }, [router]);
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Patient Helper Dashboard</h1>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Patient Overview Card */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Patient Overview</h2>
-          <p className="text-gray-600 mb-4">View patient medication schedules and history</p>
-          <button className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-            View Details
-          </button>
-        </div>
-
-        {/* Adherence Tracking Card */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Adherence Tracking</h2>
-          <p className="text-gray-600 mb-4">Monitor medication adherence progress</p>
-          <button className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-            View Adherence
-          </button>
-        </div>
-
-        {/* Alerts & Notifications Card */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Alerts</h2>
-          <p className="text-gray-600 mb-4">View medication alerts and reminders</p>
-          <button className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-            Check Alerts
-          </button>
-        </div>
+    <div className="bg-gray-50 min-h-screen p-6">
+      <h1 className="text-2xl font-bold mb-6">Patient List</h1>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {patients.map((patient) => (
+          <PatientCard
+            key={patient.id}
+            patient={patient}
+            onClick={() => router.push(`/helper/${patient.id}`)} // Navigate to patient's dashboard
+          />
+        ))}
       </div>
     </div>
-  )
-}
+  );
+};
+
+export default PatientListPage;

@@ -8,7 +8,7 @@ import AdminSidebar from './AdminSidebar'
 
 interface PageLayoutProps {
   children: ReactNode
-  userType: 'patient' | 'admin'
+  userType: 'patient' | 'admin' | 'helper'
   title?: string
 }
 
