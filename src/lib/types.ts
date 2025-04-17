@@ -26,6 +26,7 @@ export interface Medications {
   notes: string
   refillsRemaining: string
   lastFilledDate: string
+  recommendedPillCount: string
 }
 
 export interface Patients {
@@ -75,8 +76,8 @@ export interface VerificationLogs {
   Timestamp: string;      // Azure timestamp
   medicationName: string;
   medicationId: string;   // Link to medication
-  pillCount: number;      // Actual pills taken
-  recommendedCount: number; // Recommended dosage
+  pillCount: string;      // Actual pills taken
+  recommendedPillCount: string; // Recommended dosage
   timeTaken: string;      // When medication was taken
   status: 'taken' | 'missed' | 'skipped';
   notes: string;          // Any additional notes
@@ -145,8 +146,10 @@ export interface Medication {
   prescribingDoctor?: string; // Prescribing doctor
   pharmacy?: string; // Pharmacy
   notes?: string; // Notes
-  refillsRemaining?: number; // Refills remaining
+  refillsRemaining?: string; // Refills remaining
   lastFilled?: string; // Last filled date
+  patientId?: string; // Patient ID
+  recommendedPillCount?: string; // Recommended pill count
 }
 
 export interface Prescription {
