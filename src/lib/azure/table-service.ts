@@ -30,9 +30,9 @@ export class AzureTableService {
     return await this.tableClient.getEntity(partitionKey, rowKey);
   }
 
-  async queryEntities(query: string) {
-    const entities = [];
-    const iterator = this.tableClient.listEntities({
+  async queryEntities<T extends object>(query: string): Promise<T[]> {
+    const entities: T[] = [];
+    const iterator = this.tableClient.listEntities<T>({
       queryOptions: { filter: query }
     });
     for await (const entity of iterator) {

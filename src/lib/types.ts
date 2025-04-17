@@ -1,19 +1,5 @@
-export interface Adherence {
-  PartitionKey: string
-  RowKey: string
-  Timestamp: string
-  patientId: string
-  adherencePercentage: string
-  dailyAdherence: string
-  pillCount?: string
-  recommendedCount?: string
-  isCorrectDose?: string
-  bypassVerification?: string
-  notes?: string
-}
-
 export interface Alerts {
-  PartitionKey: string
+  PartitionKey: string // patientId
   RowKey: string
   Timestamp: string
   userId: string
@@ -84,18 +70,18 @@ export interface Users {
 }
 
 export interface VerificationLogs {
-  PartitionKey: string
-  RowKey: string
-  Timestamp: string
-  patientId: string
-  method: string
-  verified: boolean
-  verificationData: string
-  imageUrl: string
-  pillImageUrl: string
-  helperId: string
-  patientConfirmation: boolean
-  helperConfirmation: boolean
+  PartitionKey: string;    // patientId
+  RowKey: string;         // timestamp
+  Timestamp: string;      // Azure timestamp
+  medicationName: string;
+  medicationId: string;   // Link to medication
+  pillCount: number;      // Actual pills taken
+  recommendedCount: number; // Recommended dosage
+  timeTaken: string;      // When medication was taken
+  status: 'taken' | 'missed' | 'skipped';
+  notes: string;          // Any additional notes
+  verificationMethod: 'camera' | 'manual' | 'helper'; // How it was verified
+  isCorrectDose: boolean; // Whether pillCount matches recommendedCount
 }
 
 export interface DashboardMedication extends Medications {
@@ -176,18 +162,6 @@ export interface Prescription {
   updatedAt: string;
 }
 
-export interface AdherenceRecord {
-  id: string;
-  prescriptionId: string;
-  patientId: string;
-  medicationId: string;
-  takenAt: string;
-  status: 'taken' | 'missed' | 'delayed';
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface SignupData {
   firstName: string;
   lastName: string;
@@ -217,7 +191,6 @@ export interface AuthResult {
 }
 
 export interface DatabaseSchema {
-  Adherence: Adherence[]
   Alerts: Alerts[]
   Medications: Medications[]
   Patients: Patients[]
@@ -227,5 +200,4 @@ export interface DatabaseSchema {
   users: User[];
   medications: Medication[];
   prescriptions: Prescription[];
-  adherenceRecords: AdherenceRecord[];
 }

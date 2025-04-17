@@ -121,7 +121,7 @@ export default function CameraModal({
         bypassVerification
       });
       
-      // Record adherence with pill count
+      // Record verification with pill count
       const response = await fetch("/api/adherence", {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -139,7 +139,7 @@ export default function CameraModal({
       });
       
       const result = await response.json();
-      console.log('Adherence API response:', result);
+      console.log('Verification API response:', result);
       
       // Call the onTakeMedication callback to refresh the dashboard
       onTakeMedication();
@@ -147,8 +147,8 @@ export default function CameraModal({
       // Close the modal
       onClose();
     } catch (error) {
-      console.error("Error recording adherence:", error);
-      handleVerificationError('network', 'AdherenceError', 'Failed to record medication adherence. Please try again.');
+      console.error("Error recording verification:", error);
+      handleVerificationError('network', 'VerificationError', 'Failed to record medication verification. Please try again.');
     }
   };
 

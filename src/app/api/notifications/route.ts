@@ -1,119 +1,217 @@
 import { NextResponse } from "next/server";
-import { TableClient } from "@azure/data-tables";
+import { AzureTableService } from '@/lib/azure/table-service'
+import { Alerts } from '@/lib/types'
+import { TableEntity } from "@azure/data-tables";
+import { parseJsonField } from '@/lib/azure-table-utils';
 
-const tableClient = TableClient.fromConnectionString(
-  process.env.AZURE_STORAGE_CONNECTION_STRING!,
-  "Alerts"
-);
+const ALERTS_TABLE = 'Alerts'
+const USERS_TABLE = 'Users'
 
-interface Alert {
-  id: string;
+// Initialize table clients with error handling
+let tableClient: AzureTableService;
+let usersClient: AzureTableService;
+
+try {
+  tableClient = new AzureTableService(ALERTS_TABLE);
+  usersClient = new AzureTableService(USERS_TABLE);
+} catch (error) {
+  console.error('Error initializing Azure Table clients:', error);
+  throw new Error('Failed to initialize Azure Table clients');
+}
+
+interface AlertWithPatientInfo extends Alerts {
+  patientName: string;
+  patientEmail: string;
+}
+
+interface UserEntity extends TableEntity {
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: string;
+  linkedPatients?: string;
+}
+
+interface RawAlert extends TableEntity {
+  partitionKey: string;
+  rowKey: string;
+  userId: string;
+  medicationId: string;
   type: string;
   message: string;
-  timestamp: string;
   read: boolean;
-  medicationId?: string;
-  status?: string;
+  priority?: string;
+  timestamp: string;
 }
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: "User ID is required" },
-        { status: 400 }
-      );
-    }
-
-    const alerts: Alert[] = [];
-    const query = `PartitionKey eq '${userId}'`;
+    const adminId = searchParams.get('adminId');
     
-    for await (const alert of tableClient.listEntities({
-      queryOptions: { filter: query }
-    })) {
-      alerts.push({
-        id: alert.rowKey as string,
-        type: (alert.type as string) || 'info',
-        message: alert.message as string,
-        timestamp: (alert.Timestamp as string) || new Date().toISOString(),
-        read: (alert.read as boolean) || false,
-        medicationId: alert.medicationId as string | undefined,
-        status: alert.status as string | undefined
-      });
+    if (!adminId) {
+      return NextResponse.json({ error: 'adminId is required' }, { status: 400 });
     }
 
-    // Sort alerts by timestamp, newest first
-    alerts.sort((a: Alert, b: Alert) => 
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
+    console.log('Received request for adminId:', adminId);
 
+    // Get admin entity
+    let adminEntity: UserEntity;
+    try {
+      const adminResponse = await usersClient.getEntity('admin', adminId);
+      if (!adminResponse.partitionKey || !adminResponse.rowKey) {
+        throw new Error('Invalid admin entity: missing partitionKey or rowKey');
+      }
+      adminEntity = {
+        ...adminResponse,
+        partitionKey: adminResponse.partitionKey,
+        rowKey: adminResponse.rowKey,
+        firstName: adminResponse.firstName as string,
+        lastName: adminResponse.lastName as string,
+        email: adminResponse.email as string,
+        role: adminResponse.role as string,
+        linkedPatients: adminResponse.linkedPatients as string
+      };
+      console.log('Found admin entity:', {
+        partitionKey: adminEntity.partitionKey,
+        rowKey: adminEntity.rowKey,
+        email: adminEntity.email,
+        role: adminEntity.role
+      });
+    } catch (error: any) {
+      console.error('Error fetching admin entity:', error);
+      if (error.statusCode === 404) {
+        return NextResponse.json({ error: `Admin with ID ${adminId} not found` }, { status: 404 });
+      }
+      throw error;
+    }
+
+    // Get linked patients
+    let linkedPatients: string[] = [];
+    try {
+      linkedPatients = parseJsonField<string[]>(adminEntity.linkedPatients as string, []);
+      console.log('Parsed linked patients:', linkedPatients);
+    } catch (error: any) {
+      console.error('Error parsing linked patients:', error);
+      return NextResponse.json([]);
+    }
+
+    if (!linkedPatients || linkedPatients.length === 0) {
+      console.log('No linked patients found, returning empty array');
+      return NextResponse.json([]);
+    }
+
+    // Get alerts for each patient
+    const alerts: AlertWithPatientInfo[] = [];
+    for (const patientId of linkedPatients) {
+      try {
+        console.log('Fetching alerts for patient:', patientId);
+        const patientAlerts = await tableClient.queryEntities<Alerts>(`PartitionKey eq '${patientId}'`);
+        console.log(`Found ${patientAlerts.length} alerts for patient ${patientId}`);
+
+        for (const alert of patientAlerts) {
+          try {
+            const patientResponse = await usersClient.getEntity('patient', patientId);
+            if (!patientResponse.partitionKey || !patientResponse.rowKey) {
+              throw new Error('Invalid patient entity: missing partitionKey or rowKey');
+            }
+            const patientUser: UserEntity = {
+              ...patientResponse,
+              partitionKey: patientResponse.partitionKey,
+              rowKey: patientResponse.rowKey,
+              firstName: patientResponse.firstName as string,
+              lastName: patientResponse.lastName as string,
+              email: patientResponse.email as string,
+              role: patientResponse.role as string
+            };
+            alerts.push({
+              ...alert,
+              patientName: `${patientUser.firstName} ${patientUser.lastName}`,
+              patientEmail: patientUser.email
+            });
+          } catch (error) {
+            console.error(`Error fetching patient user for alert:`, error);
+            // Continue with next alert
+          }
+        }
+      } catch (error) {
+        console.error(`Error fetching alerts for patient ${patientId}:`, error);
+        // Continue with next patient
+      }
+    }
+
+    console.log(`Returning ${alerts.length} total alerts`);
     return NextResponse.json(alerts);
   } catch (error) {
-    console.error("Fetch alerts error:", error);
+    console.error('Error in notifications API:', error);
     return NextResponse.json(
-      { error: "Failed to fetch alerts" },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
 }
 
 // Mark alert as read
-export async function PATCH(request: Request) {
+export async function PATCH(req: Request) {
   try {
-    const { userId, alertId } = await request.json();
-
+    const { userId, alertId } = await req.json();
     if (!userId || !alertId) {
-      return NextResponse.json(
-        { error: "User ID and Alert ID are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Update the alert's read status
-    await tableClient.updateEntity(
-      {
-        partitionKey: userId,
-        rowKey: alertId,
-        read: true
-      },
-      "Merge"
-    );
+    const alert = await tableClient.getEntity(userId, alertId);
+    if (!alert) {
+      return NextResponse.json({ error: 'Alert not found' }, { status: 404 });
+    }
 
+    const updatedAlert = {
+      ...alert,
+      PartitionKey: userId,
+      RowKey: alertId,
+      read: true
+    };
+
+    await tableClient.updateEntity(updatedAlert);
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Update alert error:", error);
-    return NextResponse.json(
-      { error: "Failed to update alert" },
-      { status: 500 }
-    );
+    console.error('Error marking alert as read:', error);
+    return NextResponse.json({ error: 'Failed to update alert' }, { status: 500 });
   }
 }
 
 // Delete alert
-export async function DELETE(request: Request) {
+export async function DELETE(req: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
-    const alertId = searchParams.get("alertId");
+    const { searchParams } = new URL(req.url);
+    const partitionKey = searchParams.get('partitionKey');
+    const rowKey = searchParams.get('rowKey');
 
-    if (!userId || !alertId) {
-      return NextResponse.json(
-        { error: "User ID and Alert ID are required" },
-        { status: 400 }
-      );
+    if (!partitionKey || !rowKey) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    await tableClient.deleteEntity(userId, alertId);
+    try {
+      // First, verify the alert exists
+      const alert = await tableClient.getEntity(partitionKey, rowKey);
+      if (!alert) {
+        return NextResponse.json({ error: 'Alert not found' }, { status: 404 });
+      }
 
-    return NextResponse.json({ success: true });
+      // Delete the alert
+      await tableClient.deleteEntity(partitionKey, rowKey);
+      return NextResponse.json({ success: true });
+    } catch (error: any) {
+      // Handle specific Azure Table Storage errors
+      if (error.statusCode === 404) {
+        return NextResponse.json({ error: 'Alert not found' }, { status: 404 });
+      }
+      throw error;
+    }
   } catch (error) {
-    console.error("Delete alert error:", error);
-    return NextResponse.json(
-      { error: "Failed to delete alert" },
-      { status: 500 }
-    );
+    console.error('Error deleting alert:', error);
+    return NextResponse.json({ 
+      error: 'Failed to delete alert',
+      details: error instanceof Error ? error.message : String(error)
+    }, { status: 500 });
   }
 } 

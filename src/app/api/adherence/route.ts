@@ -1,47 +1,24 @@
 import { NextResponse } from "next/server";
-import { TableClient } from "@azure/data-tables";
-import { createTableClient } from '@/lib/azure-table-utils';
 import { AzureTableService } from '@/lib/azure/table-service';
+import { VerificationLogs, Alerts } from '@/lib/types';
 
 // Constants for table names
-const ADHERENCE_TABLE = 'Adherence';
 const VERIFICATION_LOGS_TABLE = 'VerificationLogs';
 const ALERTS_TABLE = 'Alerts';
 
 // Table services
-const adherenceTable = new AzureTableService(ADHERENCE_TABLE);
-const alertsTable = new AzureTableService(ALERTS_TABLE);
+const verificationLogsService = new AzureTableService(VERIFICATION_LOGS_TABLE);
+const alertsService = new AzureTableService(ALERTS_TABLE);
 
-// Interface for verification logs
-interface VerificationLog {
-  medicationId: string;
-  patientId: string;
-  Timestamp: string;
-  verified: boolean;
-  status: 'taken' | 'missed' | 'skipped';
-  notes?: string;
-}
-
-// Interface for adherence records
-interface Adherence {
-  PartitionKey: string;
-  RowKey: string;
-  Timestamp: string;
-  patientId: string;
-  adherencePercentage: string;
-  dailyAdherence: string;
-  pillCount: string;
-  recommendedCount: string;
-  isCorrectDose: string;
-  bypassVerification: string;
-  notes: string;
-}
-
-// Interface for the response format that matches what the dashboard expects
+// Interface for the response format
 interface AdherenceResponse {
-  adherencePercentage: string;
+  adherencePercentage: number;
   streak: number;
-  dailyAdherence: string; // JSON string of daily adherence data
+  dailyAdherence: Array<{
+    date: string;
+    taken: number;
+    total: number;
+  }>;
   totalVerifications: number;
   successfulVerifications: number;
 }
@@ -55,32 +32,35 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Patient ID is required" }, { status: 400 });
     }
 
-    // Create table client
-    const verificationLogsTable = createTableClient(VERIFICATION_LOGS_TABLE);
-
     // Get verification logs for the past 30 days
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
     const filter = `PartitionKey eq '${patientId}' and Timestamp ge datetime'${thirtyDaysAgo.toISOString()}'`;
-    const verificationLogsEntities = verificationLogsTable.listEntities({ queryOptions: { filter } });
+    const verificationLogsEntities = await verificationLogsService.queryEntities<VerificationLogs>(filter);
 
     // Collect all verification logs
-    const verificationLogs: VerificationLog[] = [];
-    for await (const entity of verificationLogsEntities) {
+    const verificationLogs: VerificationLogs[] = [];
+    for (const entity of verificationLogsEntities) {
       verificationLogs.push({
-        medicationId: entity.medicationId as string,
-        patientId: entity.patientId as string,
+        PartitionKey: entity.PartitionKey as string,
+        RowKey: entity.RowKey as string,
         Timestamp: entity.Timestamp as string,
-        verified: entity.verified as boolean,
-        status: (entity.status as 'taken' | 'missed' | 'skipped') || (entity.verified ? 'taken' : 'missed'),
-        notes: entity.notes as string | undefined
+        medicationName: entity.medicationName as string,
+        medicationId: entity.medicationId as string,
+        pillCount: entity.pillCount as number,
+        recommendedCount: entity.recommendedCount as number,
+        timeTaken: entity.timeTaken as string,
+        status: entity.status as 'taken' | 'missed' | 'skipped',
+        notes: entity.notes as string,
+        verificationMethod: entity.verificationMethod as 'camera' | 'manual' | 'helper',
+        isCorrectDose: entity.isCorrectDose as boolean
       });
     }
 
     // Calculate adherence metrics
     const totalVerifications = verificationLogs.length;
-    const successfulVerifications = verificationLogs.filter(log => log.verified || log.status === 'taken').length;
+    const successfulVerifications = verificationLogs.filter(log => log.status === 'taken').length;
     const adherencePercentage = totalVerifications > 0 
       ? (successfulVerifications / totalVerifications) * 100 
       : 0;
@@ -88,14 +68,14 @@ export async function GET(req: Request) {
     // Calculate streak
     let streak = calculateStreak(verificationLogs);
 
-    // Group by date for daily adherence
+    // Calculate daily adherence
     const dailyAdherence = calculateDailyHistory(verificationLogs);
 
-    // Prepare response in the format expected by the dashboard
+    // Prepare response
     const response: AdherenceResponse = {
-      adherencePercentage: adherencePercentage.toFixed(2),
+      adherencePercentage,
       streak,
-      dailyAdherence: JSON.stringify(dailyAdherence),
+      dailyAdherence,
       totalVerifications,
       successfulVerifications
     };
@@ -129,128 +109,137 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // Create table client for verification logs
-    const verificationLogsTable = createTableClient(VERIFICATION_LOGS_TABLE);
+    // Get medication information
+    const medicationsService = new AzureTableService('Medications');
+    const medicationEntity = await medicationsService.getEntity(patientId, medicationId);
+    const medication = {
+      name: medicationEntity.name as string,
+      dosage: medicationEntity.dosage as string
+    };
     
     // Create a unique record ID using timestamp
     const timestamp = new Date().toISOString();
     const rowKey = `${medicationId}-${timestamp}`;
 
-    // Create verification log entity
-    const verificationLog = {
-      partitionKey: patientId,
-      rowKey: rowKey,
-      medicationId,
-      patientId,
+    // Check for duplicate verification within the last 5 minutes
+    const fiveMinutesAgo = new Date();
+    fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
+    
+    const duplicateFilter = `PartitionKey eq '${patientId}' and medicationId eq '${medicationId}' and Timestamp ge datetime'${fiveMinutesAgo.toISOString()}'`;
+    const recentLogs = await verificationLogsService.queryEntities(duplicateFilter);
+    
+    if (recentLogs.length > 0) {
+      return NextResponse.json({ 
+        error: "Duplicate verification attempt detected",
+        message: "A verification for this medication was already recorded in the last 5 minutes"
+      }, { status: 409 });
+    }
+
+    // Check if this is an overdose or underdose
+    const isOverdose = pillCount > recommendedCount;
+    const isUnderdose = pillCount < recommendedCount;
+    const isCorrectDose = !isOverdose && !isUnderdose;
+
+    // Create verification log
+    const verificationLog: VerificationLogs = {
+      PartitionKey: patientId,
+      RowKey: rowKey,
       Timestamp: timestamp,
-      verified: status === 'taken',
-      status,
-      notes: notes || ''
+      medicationName: medication.name,
+      medicationId: medicationId,
+      pillCount: pillCount,
+      recommendedCount: recommendedCount,
+      timeTaken: timestamp,
+      status: status,
+      notes: notes,
+      verificationMethod: bypassVerification ? 'manual' : 'camera',
+      isCorrectDose: isCorrectDose
     };
 
     // Save to Azure Table
-    await verificationLogsTable.createEntity(verificationLog);
+    await verificationLogsService.createEntity(verificationLog);
+    
+    // Helper function to determine alert priority
+    const getAlertPriority = (type: 'overdose' | 'underdose' | 'verification_bypass'): 'high' | 'medium' | 'low' => {
+      switch (type) {
+        case 'overdose':
+          return 'high';
+        case 'underdose':
+          return 'medium';
+        case 'verification_bypass':
+          return 'low';
+        default:
+          return 'low';
+      }
+    };
 
-    // If pill count information is provided, handle adherence record and alerts
-    if (pillCount !== undefined && recommendedCount !== undefined) {
-      // Check if this is an overdose or underdose
-      const isOverdose = pillCount > recommendedCount;
-      const isUnderdose = pillCount < recommendedCount;
-      const isCorrectDose = !isOverdose && !isUnderdose;
-      
-      // Create adherence record
-      const adherenceRecord: Adherence = {
-        PartitionKey: medicationId,
-        RowKey: timestamp,
+    // Create alerts for different scenarios
+    const alerts: Alerts[] = [];
+    
+    // If verification was bypassed, create an alert
+    if (bypassVerification) {
+      const bypassAlert: Alerts = {
+        PartitionKey: patientId,
+        RowKey: `bypass-${timestamp}`,
         Timestamp: timestamp,
-        patientId,
-        adherencePercentage: isCorrectDose ? "100" : "0", // 100% if correct dose, 0% otherwise
-        dailyAdherence: JSON.stringify([]), // Will be updated later
-        pillCount: pillCount.toString(),
-        recommendedCount: recommendedCount.toString(),
-        isCorrectDose: isCorrectDose.toString(),
-        bypassVerification: bypassVerification.toString(),
-        notes: notes
+        type: 'verification_bypass',
+        message: `Medication verification bypassed for ${medication.name}. Reason: ${notes}`,
+        priority: getAlertPriority('verification_bypass'),
+        medicationId: medicationId,
+        userId: patientId,
+        read: false
       };
-
-      await adherenceTable.createEntity(adherenceRecord);
-      
-      // Create alerts for different scenarios
-      const alerts = [];
-      
-      // If verification was bypassed, create an alert
-      if (bypassVerification) {
-        const bypassAlert = {
-          PartitionKey: patientId,
-          RowKey: `bypass-${timestamp}`,
-          Timestamp: timestamp,
-          userId: patientId,
-          medicationId,
-          type: 'verification_bypassed',
-          message: `Patient bypassed pill verification for ${medicationId}. Please follow up.`,
-          read: false,
-          priority: 'high'
-        };
-        
-        alerts.push(bypassAlert);
-      }
-      
-      // If overdose or underdose, create an alert
-      if (isOverdose || isUnderdose) {
-        const alertType = isOverdose ? 'overdose' : 'underdose';
-        const alertMessage = isOverdose
-          ? `Patient took ${pillCount} pills instead of the recommended ${recommendedCount} (overdose)`
-          : `Patient took ${pillCount} pills instead of the recommended ${recommendedCount} (underdose)`;
-        
-        const doseAlert = {
-          PartitionKey: patientId,
-          RowKey: `${alertType}-${timestamp}`,
-          Timestamp: timestamp,
-          userId: patientId,
-          medicationId,
-          type: alertType,
-          message: alertMessage,
-          read: false,
-          priority: isOverdose ? 'critical' : 'high'
-        };
-        
-        alerts.push(doseAlert);
-      }
-      
-      // Save all alerts
-      for (const alert of alerts) {
-        await alertsTable.createEntity(alert);
-      }
-      
-      return NextResponse.json({
-        success: true,
-        message: "Verification log and adherence record created successfully",
-        timestamp,
-        alerts: alerts.length > 0 ? alerts.map(a => a.type) : []
-      });
+      alerts.push(bypassAlert);
     }
-
-    // If no pill count info, just return success for verification log
+    
+    // If overdose or underdose, create an alert
+    if (isOverdose || isUnderdose) {
+      const alertType = isOverdose ? 'overdose' : 'underdose';
+      const alertMessage = isOverdose
+        ? `Overdose detected for ${medication.name}. Taken: ${pillCount}, Recommended: ${recommendedCount}`
+        : `Underdose detected for ${medication.name}. Taken: ${pillCount}, Recommended: ${recommendedCount}`;
+      
+      const doseAlert: Alerts = {
+        PartitionKey: patientId,
+        RowKey: `${alertType}-${timestamp}`,
+        Timestamp: timestamp,
+        type: alertType,
+        message: alertMessage,
+        priority: getAlertPriority(alertType),
+        medicationId: medicationId,
+        userId: patientId,
+        read: false
+      };
+      
+      alerts.push(doseAlert);
+    }
+    
+    // Save all alerts
+    for (const alert of alerts) {
+      await alertsService.createEntity(alert);
+    }
+    
     return NextResponse.json({
       success: true,
       message: "Verification log created successfully",
-      timestamp
+      timestamp,
+      alerts: alerts.length > 0 ? alerts.map(a => a.type) : []
     });
   } catch (error) {
-    console.error("Error recording adherence:", error);
+    console.error("Error recording verification:", error);
     return NextResponse.json({ 
-      error: "Error recording adherence",
+      error: "Error recording verification",
       details: error instanceof Error ? error.message : String(error)
     }, { status: 500 });
   }
 }
 
 // Helper functions for calculating adherence statistics
-function calculateStreak(records: VerificationLog[]): number {
+function calculateStreak(records: VerificationLogs[]): number {
   if (records.length === 0) return 0;
   
   // Group records by date to check if each day had at least one taken medication
-  const recordsByDate = new Map<string, VerificationLog[]>();
+  const recordsByDate = new Map<string, VerificationLogs[]>();
   
   records.forEach(record => {
     const date = new Date(record.Timestamp).toISOString().split('T')[0];
@@ -268,9 +257,7 @@ function calculateStreak(records: VerificationLog[]): number {
   
   // Count consecutive days with at least one taken medication
   for (const [_, dayRecords] of dateRecords) {
-    const hasTakenMedication = dayRecords.some(record => 
-      record.verified || record.status === 'taken'
-    );
+    const hasTakenMedication = dayRecords.some(record => record.status === 'taken');
     
     if (hasTakenMedication) {
       streak++;
@@ -282,7 +269,7 @@ function calculateStreak(records: VerificationLog[]): number {
   return streak;
 }
 
-function calculateDailyHistory(records: VerificationLog[]): Array<{date: string; taken: number; total: number}> {
+function calculateDailyHistory(records: VerificationLogs[]): Array<{date: string; taken: number; total: number}> {
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const today = new Date();
   const history = [];
@@ -300,7 +287,7 @@ function calculateDailyHistory(records: VerificationLog[]): Array<{date: string;
     });
     
     // Count taken and total for the day
-    const taken = dayRecords.filter(record => record.verified || record.status === 'taken').length;
+    const taken = dayRecords.filter(record => record.status === 'taken').length;
     const total = dayRecords.length;
     
     history.push({

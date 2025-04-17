@@ -115,29 +115,30 @@ export async function POST(request: Request) {
     
     console.log('Verification result:', result);
 
+    // Get medication information
+    const medicationsService = new AzureTableService('Medications');
+    const medicationEntity = await medicationsService.getEntity(patientId, medicationId);
+    const medication = {
+      name: medicationEntity.name as string,
+      dosage: medicationEntity.dosage as string
+    };
+
     // Log verification attempt
     const timestamp = new Date().toISOString();
     const verificationLog: VerificationLogs = {
       PartitionKey: patientId,
       RowKey: timestamp,
       Timestamp: timestamp,
-      patientId,
-      method: 'image',
-      verified: result.verified,
-      verificationData: JSON.stringify(result),
-      imageUrl: '', // Store image URL if needed
-      pillImageUrl: '', // Store pill image URL if needed
-      helperId: '',
-      patientConfirmation: false,
-      helperConfirmation: false
+      medicationName: medication.name,
+      medicationId: medicationId,
+      pillCount: requestData.pillCount || 1,
+      recommendedCount: parseInt(medication.dosage, 10),
+      timeTaken: timestamp,
+      status: result.verified ? 'taken' : 'missed',
+      notes: result.message || '',
+      verificationMethod: 'camera',
+      isCorrectDose: (requestData.pillCount || 1) === parseInt(medication.dosage, 10)
     };
-
-    console.log('Saving verification log:', {
-      patientId,
-      medicationId,
-      verified: result.verified,
-      timestamp
-    });
 
     // Store verification log in Azure
     const tableService = new AzureTableService('VerificationLogs');
