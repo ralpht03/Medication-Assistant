@@ -1,6 +1,6 @@
 import PageLayout from '@/components/PageLayout';
 import AvailableHelpersList from '@/components/AvailableHelpersList';
-import HelperInvitationsList from '@/components/HelperInvitationsList';
+import PatientInvitationsList from '@/components/PatientInvitationsList';
 
 export default function PatientInvitationsPage() {
   return (
@@ -15,7 +15,7 @@ export default function PatientInvitationsPage() {
         </div>
         
         <div>
-          <HelperInvitationsList />
+          <PatientInvitationsList />
         </div>
       </div>
     </PageLayout>
