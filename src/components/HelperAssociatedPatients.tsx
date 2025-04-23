@@ -4,50 +4,41 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import PatientCard from '@/components/shared/PatientCard';
 
-interface Invitation {
-  id: string;
-  patientId: string;
-  patientName: string;
-  status: 'pending' | 'accepted' | 'declined';
-  createdAt: string;
-}
-
 interface Patient {
   id: string;
   name: string;
-  profilePictureUrl?: string; // Optional profile picture
-  adherencePercentage: number; // Adherence data
+  email: string;
+  profilePictureUrl?: string;
+  adherencePercentage: number;
 }
 
 const HelperAssociatedPatients: React.FC = () => {
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
-    const fetchInvitations = async () => {
+    const fetchPatients = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/api/helper/invitations'); 
+        const response = await fetch('/api/helper/invitations');
         if (!response.ok) {
-          throw new Error(`Failed to fetch invitations: ${response.statusText}`);
+          throw new Error(`Failed to fetch patients: ${response.statusText}`);
         }
         const data = await response.json();
-        console.log('Fetched Invitations:', data.invitations); // Debugging log
-        setInvitations(data.invitations || []);
+        console.log('Fetched Patients:', data.linkedPatients); // Debugging log
+        setPatients(data.linkedPatients || []);
       } catch (err) {
         console.error(err);
-        setError('Failed to load invitations.');
+        setError('Failed to load patients.');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchInvitations();
+    fetchPatients();
   }, []);
-
-  const acceptedInvitations = invitations.filter((invitation) => invitation.status === 'accepted');
 
   if (loading) {
     return <p className="text-gray-600">Loading associated patients...</p>;
@@ -57,21 +48,21 @@ const HelperAssociatedPatients: React.FC = () => {
     return <p className="text-red-500">{error}</p>;
   }
 
-  if (acceptedInvitations.length === 0) {
+  if (patients.length === 0) {
     return <p className="text-gray-600">No associated patients found.</p>;
   }
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {acceptedInvitations.map((invitation) => (
+      {patients.map((patient) => (
         <PatientCard
-          key={invitation.patientId}
+          key={patient.id}
           patient={{
-            id: invitation.patientId,
-            name: invitation.patientName,
-            adherencePercentage: 0, // Replace with actual adherence data if available
+            id: patient.id,
+            name: patient.name,
+            adherencePercentage: 0, // This should be fetched from a separate API
           }}
-          onClick={() => router.push(`/helper/dashboard/${invitation.patientId}`)} // Navigate to the helper dashboard
+          onClick={() => router.push(`/helper/dashboard/${patient.id}`)}
         />
       ))}
     </div>

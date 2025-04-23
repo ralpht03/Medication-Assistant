@@ -51,6 +51,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if helper is already linked to patient
+    const linkedHelpers = patient.linkedHelpers ? JSON.parse(patient.linkedHelpers as string) : [];
+    if (linkedHelpers.includes(helperId)) {
+      return NextResponse.json(
+        { message: 'This helper is already linked to you' },
+        { status: 400 }
+      );
+    }
+
     // Generate token
     const token = crypto.randomBytes(32).toString('hex');
     
