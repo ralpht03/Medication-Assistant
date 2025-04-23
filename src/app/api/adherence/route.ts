@@ -22,6 +22,8 @@ interface AdherenceResponse {
   }>;
   totalVerifications: string;
   successfulVerifications: string;
+  correctDoseVerifications: string;
+  incorrectDoseVerifications: string;
   missedVerifications: string;
   skippedVerifications: string;
   verificationLogs: VerificationLogs[];
@@ -74,8 +76,13 @@ export async function GET(req: Request) {
     const missedVerifications = verificationLogs.filter(log => log.status === 'missed').length;
     const skippedVerifications = verificationLogs.filter(log => log.status === 'skipped').length;
     
-    const adherencePercentage = totalVerifications > 0 
-      ? Math.round((successfulVerifications / totalVerifications) * 100).toString()
+    // Calculate correct dose metrics
+    const correctDoseVerifications = verificationLogs.filter(log => log.status === 'taken' && log.isCorrectDose).length;
+    const incorrectDoseVerifications = successfulVerifications - correctDoseVerifications;
+    
+    // Calculate adherence percentage based on correct dosage
+    const adherencePercentage = totalVerifications > 0
+      ? Math.round((correctDoseVerifications / totalVerifications) * 100).toString()
       : "0";
 
     // Calculate streak
@@ -95,6 +102,8 @@ export async function GET(req: Request) {
       })),
       totalVerifications: totalVerifications.toString(),
       successfulVerifications: successfulVerifications.toString(),
+      correctDoseVerifications: correctDoseVerifications.toString(),
+      incorrectDoseVerifications: incorrectDoseVerifications.toString(),
       missedVerifications: missedVerifications.toString(),
       skippedVerifications: skippedVerifications.toString(),
       verificationLogs

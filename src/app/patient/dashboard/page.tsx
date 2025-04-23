@@ -19,6 +19,8 @@ interface AdherenceData {
   }>;
   totalVerifications: number;
   successfulVerifications: number;
+  correctDoseVerifications: number;
+  incorrectDoseVerifications: number;
 }
 
 interface AdherenceRecord {
@@ -34,7 +36,9 @@ const emptyAdherenceData: AdherenceData = {
   streak: 0,
   dailyHistory: [],
   totalVerifications: 0,
-  successfulVerifications: 0
+  successfulVerifications: 0,
+  correctDoseVerifications: 0,
+  incorrectDoseVerifications: 0
 }
 
 export default function DashboardPage() {
@@ -132,7 +136,9 @@ export default function DashboardPage() {
           streak: data.streak,
           dailyHistory: data.dailyAdherence,
           totalVerifications: data.totalVerifications,
-          successfulVerifications: data.successfulVerifications
+          successfulVerifications: data.successfulVerifications,
+          correctDoseVerifications: data.correctDoseVerifications,
+          incorrectDoseVerifications: data.incorrectDoseVerifications
         });
       } catch (error) {
         console.error('Error fetching adherence data:', error);
@@ -189,7 +195,8 @@ export default function DashboardPage() {
             percentage: adherenceData.percentage,
             streak: adherenceData.streak,
             total: adherenceData.totalVerifications,
-            taken: adherenceData.successfulVerifications,
+            taken: adherenceData.correctDoseVerifications,
+            incorrect: adherenceData.incorrectDoseVerifications,
             missed: adherenceData.totalVerifications - adherenceData.successfulVerifications
           }}
           loading={loading}
