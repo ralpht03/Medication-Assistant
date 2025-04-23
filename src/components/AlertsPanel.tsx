@@ -23,9 +23,6 @@ const AlertsPanel = () => {
   const [pollingInterval, setPollingInterval] = useState(POLLING_INTERVAL.normal);
   const isMounted = useRef(true);
   const timeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [totalPages, setTotalPages] = useState(1);
 
   const processAlertData = (data: Alerts[]): Alert[] => {
     return data.map((alert: Alerts) => ({
@@ -41,13 +38,34 @@ const AlertsPanel = () => {
 
     try {
       setRefreshing(true);
-      const response = await fetch(`/api/notifications?page=${page}&limit=10`);
+      
+      // Get the current user from localStorage
+      const userStr = localStorage.getItem('user');
+      if (!userStr) {
+        throw new Error('User not found');
+      }
+      
+      const user = JSON.parse(userStr);
+      const userId = user.id || user.rowKey;
+      const role = user.role;
+
+      // Build query parameters based on user role
+      const params = new URLSearchParams();
+      if (role === 'admin') {
+        params.append('adminId', userId);
+      } else if (role === 'helper') {
+        params.append('helperId', userId);
+      } else if (role === 'patient') {
+        params.append('patientId', userId);
+      }
+
+      const response = await fetch(`/api/notifications?${params.toString()}`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch alerts');
       }
       
-      const { data, pagination } = await response.json();
+      const data = await response.json();
       const processedAlerts = processAlertData(data);
 
       // Only update if data has changed
@@ -55,8 +73,6 @@ const AlertsPanel = () => {
         setAlerts(processedAlerts);
       }
 
-      setTotalPages(pagination.totalPages);
-      setHasMore(page < pagination.totalPages);
       setError(null);
       setRetryCount(0);
       setPollingInterval(POLLING_INTERVAL.normal);
@@ -76,7 +92,7 @@ const AlertsPanel = () => {
         setRefreshing(false);
       }
     }
-  }, [alerts, retryCount, page]);
+  }, [alerts, retryCount]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -101,18 +117,6 @@ const AlertsPanel = () => {
     setRetryCount(0);
     setPollingInterval(POLLING_INTERVAL.normal);
     fetchAlerts();
-  };
-
-  const handleNextPage = () => {
-    if (hasMore) {
-      setPage(prev => prev + 1);
-    }
-  };
-
-  const handlePrevPage = () => {
-    if (page > 1) {
-      setPage(prev => prev - 1);
-    }
   };
 
   const getPriorityColor = (priority: Alert["priority"]) => {
@@ -165,61 +169,39 @@ const AlertsPanel = () => {
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold text-gray-800">Recent Alerts</h2>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={handlePrevPage}
-            disabled={page === 1}
-            className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-50"
-          >
-            <ChevronLeft className="h-5 w-5 text-gray-600" />
-          </button>
-          <span className="text-sm text-gray-600">
-            Page {page} of {totalPages}
-          </span>
-          <button
-            onClick={handleNextPage}
-            disabled={!hasMore}
-            className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-50"
-          >
-            <ChevronRight className="h-5 w-5 text-gray-600" />
-          </button>
-          <button
-            onClick={fetchAlerts}
-            disabled={refreshing}
-            className={`p-2 rounded-full hover:bg-gray-100 ${refreshing ? 'animate-spin' : ''}`}
-            title="Refresh alerts"
-          >
-            <RefreshCw className={`h-5 w-5 ${refreshing ? 'text-gray-400' : 'text-gray-600'}`} />
-          </button>
-        </div>
-      </div>
       <div className="space-y-4">
-        {alerts.map((alert) => (
-          <div
-            key={alert.id}
-            className={`p-4 ${getPriorityColor(alert.priority)} border-l-4 ${
-              alert.priority === "high"
-                ? "border-red-500"
-                : alert.priority === "medium"
-                ? "border-orange-500"
-                : "border-yellow-500"
-            } rounded-r`}
-          >
-            <div className="flex items-start">
-              <div className="flex-shrink-0">{getAlertIcon(alert.type)}</div>
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-900">{alert.message}</p>
-                <span className="text-xs text-gray-500">{alert.time}</span>
-                <div className="mt-1">
-                  <span className="text-xs text-gray-500">Patient ID: </span>
-                  <span className="ml-1 text-sm text-gray-500">{alert.patient}</span>
+        {alerts.length === 0 ? (
+          <div className="text-center py-8">
+            <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-500">No alerts to display</p>
+            <p className="text-sm text-gray-400 mt-1">You'll be notified when new alerts come in</p>
+          </div>
+        ) : (
+          alerts.map((alert) => (
+            <div
+              key={alert.id}
+              className={`p-4 ${getPriorityColor(alert.priority)} border-l-4 ${
+                alert.priority === "high"
+                  ? "border-red-500"
+                  : alert.priority === "medium"
+                  ? "border-orange-500"
+                  : "border-yellow-500"
+              } rounded-r`}
+            >
+              <div className="flex items-start">
+                <div className="flex-shrink-0">{getAlertIcon(alert.type)}</div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-gray-900">{alert.message}</p>
+                  <span className="text-xs text-gray-500">{alert.time}</span>
+                  <div className="mt-1">
+                    <span className="text-xs text-gray-500">Patient ID: </span>
+                    <span className="ml-1 text-sm text-gray-500">{alert.patient}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );

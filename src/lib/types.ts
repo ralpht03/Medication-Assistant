@@ -2,7 +2,7 @@ export interface Alerts {
   PartitionKey: string // patientId
   RowKey: string
   Timestamp: string
-  userId: string
+  patientId: string
   medicationId: string
   type: string
   message: string
@@ -68,6 +68,7 @@ export interface Users {
   createdAt: string
   updatedAt: string
   linkedPatients: string
+  linkedAdministrators: string // JSON array of admin IDs
 }
 
 export interface VerificationLogs {

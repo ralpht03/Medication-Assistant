@@ -22,52 +22,76 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
-    const adminId = searchParams.get("adminId");
-    const action = searchParams.get("action");
-    
-    // Special case: check for missed doses
-    if (action === "check-missed-doses") {
-      return checkMissedDoses();
-    }
-    
-    // Admin alerts
-    if (adminId) {
-      return getAdminAlerts(request);
-    }
-    
-    // Regular user alerts
+    const role = searchParams.get("role");
     const type = searchParams.get("type");
-    const status = searchParams.get("status"); // 'read', 'unread', or 'all'
+    const status = searchParams.get("status");
     const limit = searchParams.get("limit") ? parseInt(searchParams.get("limit")!) : 50;
 
-    if (!userId) {
+    if (!userId || !role) {
       return NextResponse.json(
-        { error: "User ID is required" },
+        { error: "User ID and role are required" },
         { status: 400 }
       );
     }
 
-    // Create table client
+    // Create table clients
     const alertsTable = createTableClient(ALERTS_TABLE);
+    const usersTable = createTableClient('Users');
     
-    // Build filter
-    let filter = `partitionKey eq '${userId}'`;
+    let alerts = [];
     
+    // Get user's linked patients/admins based on role
+    const user = await usersTable.getEntity('USER', userId);
+    let linkedIds: string[] = [];
+    
+    if (role === 'admin') {
+      // Admin gets alerts for their linked patients
+      if (user.linkedPatients) {
+        linkedIds = JSON.parse(user.linkedPatients);
+      }
+    } else if (role === 'helper') {
+      // Helper gets alerts for their linked patients
+      if (user.linkedPatients) {
+        linkedIds = JSON.parse(user.linkedPatients);
+      }
+    } else if (role === 'patient') {
+      // Patient gets their own alerts
+      linkedIds = [userId];
+    }
+
+    // Build filter based on role and linked IDs
+    let filter = '';
+    if (role === 'admin' || role === 'helper') {
+      // For admin/helper, get alerts where partitionKey is in linkedIds
+      filter = linkedIds.map(id => `PartitionKey eq '${id}'`).join(' or ');
+    } else {
+      // For patient, get their own alerts
+      filter = `PartitionKey eq '${userId}'`;
+    }
+
     if (type) {
       filter += ` and type eq '${type}'`;
     }
-    
+
     if (status === 'read') {
       filter += ` and read eq true`;
     } else if (status === 'unread') {
       filter += ` and read eq false`;
     }
-    
+
     // Fetch alerts
-    const alerts = [];
     const alertEntities = alertsTable.listEntities({ queryOptions: { filter } });
     
     for await (const entity of alertEntities) {
+      // Get patient info for the alert
+      let patientName = 'Unknown';
+      try {
+        const patient = await usersTable.getEntity('USER', entity.partitionKey);
+        patientName = `${patient.firstName} ${patient.lastName}`;
+      } catch (error) {
+        console.error('Error fetching patient info:', error);
+      }
+
       alerts.push({
         id: entity.rowKey,
         type: entity.type,
@@ -77,21 +101,20 @@ export async function GET(request: Request) {
         priority: entity.priority || 'medium',
         medicationId: entity.medicationId,
         medicationName: entity.medicationName,
-        patientId: entity.patientId,
-        patientName: entity.patientName
+        patientId: entity.partitionKey,
+        patientName
       });
-      
-      // Respect the limit
+
       if (alerts.length >= limit) {
         break;
       }
     }
+
     // Sort alerts by timestamp, newest first
     alerts.sort((a, b) =>
-      new Date(b.timestamp as string).getTime() - new Date(a.timestamp as string).getTime()
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
-    
-    
+
     return NextResponse.json(alerts);
   } catch (error) {
     console.error("Fetch alerts error:", error);

@@ -35,7 +35,7 @@ interface UserEntity extends TableEntity {
 interface RawAlert extends TableEntity {
   partitionKey: string;
   rowKey: string;
-  userId: string;
+  patientId: string;
   medicationId: string;
   type: string;
   message: string;
@@ -48,70 +48,77 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const adminId = searchParams.get('adminId');
-    
-    if (!adminId) {
-      return NextResponse.json({ error: 'adminId is required' }, { status: 400 });
+    const helperId = searchParams.get('helperId');
+    const patientId = searchParams.get('patientId');
+
+    if (!adminId && !helperId && !patientId) {
+      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
-    console.log('Received request for adminId:', adminId);
+    // Get user entity based on role
+    let userEntity: UserEntity;
+    let linkedIds: string[] = [];
 
-    // Get admin entity
-    let adminEntity: UserEntity;
-    try {
-      const adminResponse = await usersClient.getEntity('admin', adminId);
-      if (!adminResponse.partitionKey || !adminResponse.rowKey) {
-        throw new Error('Invalid admin entity: missing partitionKey or rowKey');
-      }
-      adminEntity = {
-        ...adminResponse,
-        partitionKey: adminResponse.partitionKey,
-        rowKey: adminResponse.rowKey,
-        firstName: adminResponse.firstName as string,
-        lastName: adminResponse.lastName as string,
-        email: adminResponse.email as string,
-        role: adminResponse.role as string,
-        linkedPatients: adminResponse.linkedPatients as string
-      };
-      console.log('Found admin entity:', {
-        partitionKey: adminEntity.partitionKey,
-        rowKey: adminEntity.rowKey,
-        email: adminEntity.email,
-        role: adminEntity.role
-      });
-    } catch (error: any) {
-      console.error('Error fetching admin entity:', error);
-      if (error.statusCode === 404) {
-        return NextResponse.json({ error: `Admin with ID ${adminId} not found` }, { status: 404 });
-      }
-      throw error;
-    }
-
-    // Get linked patients
-    let linkedPatients: string[] = [];
-    try {
-      linkedPatients = parseJsonField<string[]>(adminEntity.linkedPatients as string, []);
-      console.log('Parsed linked patients:', linkedPatients);
-    } catch (error: any) {
-      console.error('Error parsing linked patients:', error);
-      return NextResponse.json([]);
-    }
-
-    if (!linkedPatients || linkedPatients.length === 0) {
-      console.log('No linked patients found, returning empty array');
-      return NextResponse.json([]);
-    }
-
-    // Get alerts for each patient
-    const alerts: AlertWithPatientInfo[] = [];
-    for (const patientId of linkedPatients) {
+    if (adminId) {
       try {
-        console.log('Fetching alerts for patient:', patientId);
-        const patientAlerts = await tableClient.queryEntities<Alerts>(`PartitionKey eq '${patientId}'`);
-        console.log(`Found ${patientAlerts.length} alerts for patient ${patientId}`);
+        const adminResponse = await usersClient.getEntity('admin', adminId);
+        if (!adminResponse.partitionKey || !adminResponse.rowKey) {
+          throw new Error('Invalid admin entity: missing partitionKey or rowKey');
+        }
+        userEntity = {
+          ...adminResponse,
+          partitionKey: adminResponse.partitionKey,
+          rowKey: adminResponse.rowKey,
+          firstName: adminResponse.firstName as string,
+          lastName: adminResponse.lastName as string,
+          email: adminResponse.email as string,
+          role: adminResponse.role as string,
+          linkedPatients: adminResponse.linkedPatients as string
+        };
+        linkedIds = parseJsonField<string[]>(userEntity.linkedPatients || '[]', []);
+      } catch (error) {
+        console.error('Error fetching admin entity:', error);
+        return NextResponse.json({ error: 'Admin not found' }, { status: 404 });
+      }
+    } else if (helperId) {
+      try {
+        const helperResponse = await usersClient.getEntity('helper', helperId);
+        if (!helperResponse.partitionKey || !helperResponse.rowKey) {
+          throw new Error('Invalid helper entity: missing partitionKey or rowKey');
+        }
+        userEntity = {
+          ...helperResponse,
+          partitionKey: helperResponse.partitionKey,
+          rowKey: helperResponse.rowKey,
+          firstName: helperResponse.firstName as string,
+          lastName: helperResponse.lastName as string,
+          email: helperResponse.email as string,
+          role: helperResponse.role as string,
+          linkedPatients: helperResponse.linkedPatients as string
+        };
+        linkedIds = parseJsonField<string[]>(userEntity.linkedPatients || '[]', []);
+      } catch (error) {
+        console.error('Error fetching helper entity:', error);
+        return NextResponse.json({ error: 'Helper not found' }, { status: 404 });
+      }
+    } else if (patientId) {
+      // For patients, they only see their own alerts
+      linkedIds = [patientId];
+    }
 
+    if (linkedIds.length === 0) {
+      return NextResponse.json([]);
+    }
+
+    // Get alerts for each linked patient
+    const alerts: AlertWithPatientInfo[] = [];
+    for (const id of linkedIds) {
+      try {
+        const patientAlerts = await tableClient.queryEntities<Alerts>(`PartitionKey eq '${id}'`);
+        
         for (const alert of patientAlerts) {
           try {
-            const patientResponse = await usersClient.getEntity('patient', patientId);
+            const patientResponse = await usersClient.getEntity('patient', id);
             if (!patientResponse.partitionKey || !patientResponse.rowKey) {
               throw new Error('Invalid patient entity: missing partitionKey or rowKey');
             }
@@ -131,16 +138,13 @@ export async function GET(request: Request) {
             });
           } catch (error) {
             console.error(`Error fetching patient user for alert:`, error);
-            // Continue with next alert
           }
         }
       } catch (error) {
-        console.error(`Error fetching alerts for patient ${patientId}:`, error);
-        // Continue with next patient
+        console.error(`Error fetching alerts for patient ${id}:`, error);
       }
     }
 
-    console.log(`Returning ${alerts.length} total alerts`);
     return NextResponse.json(alerts);
   } catch (error) {
     console.error('Error in notifications API:', error);
