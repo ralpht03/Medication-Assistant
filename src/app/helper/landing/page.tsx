@@ -2,14 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import HelperInvitationsList from '@/components/HelperInvitationsList';
+import HelperAssociatedPatients from '@/components/HelperAssociatedPatients';
 
 export default function HelperLandingPage() {
   const router = useRouter();
-
-  const handlePatientClick = (patientId: string) => {
-    // Navigate to the helper dashboard for the selected patient
-    router.push(`/helper/dashboard/${patientId}`);
-  };
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -21,6 +17,8 @@ export default function HelperLandingPage() {
       <div>
         <h1 className="text-2xl font-bold mb-6">Helper Invitations</h1>
         <HelperInvitationsList />
+        <h2 className="text-xl font-bold mt-10 mb-6">Associated Patients</h2>
+        <HelperAssociatedPatients />
       </div>
       <div className="mt-8">
         <button
