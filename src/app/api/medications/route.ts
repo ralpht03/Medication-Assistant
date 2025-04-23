@@ -86,7 +86,8 @@ export async function POST(request: Request) {
       pharmacy,
       notes,
       refillsRemaining,
-      lastFilled
+      lastFilled,
+      recommendedPillCount
     } = body;
 
     // Ensure patientId is provided for all operations
@@ -121,6 +122,7 @@ export async function POST(request: Request) {
         pharmacy: pharmacy || '',
         notes: notes || '',
         refillsRemaining: refillsRemaining || 0,
+        recommendedPillCount: recommendedPillCount || '1',
         lastFilled: lastFilled || '',
         time: '08:00' // Default time
       };
