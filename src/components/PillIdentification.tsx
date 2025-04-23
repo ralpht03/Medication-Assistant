@@ -90,16 +90,32 @@ const PillIdentification = forwardRef<PillIdentificationRef, PillIdentificationP
       startCamera(); // Start the camera after permission is granted
     } catch (error) {
       console.error('Permission request error:', error);
-      setPermissionState('denied');
-      setMessage('Camera access denied. Please enable camera permissions in your browser settings.');
-      
-      if (onVerificationError) {
-        onVerificationError(
-          'camera', 
-          'PermissionDenied', 
-          'Camera access denied. Please enable camera permissions in your browser settings.',
-          false
-        );
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDismissedError') {
+          setPermissionState('denied');
+          setMessage('Camera access is required for medication verification. Please enable camera permissions in your browser settings.');
+          
+          if (onVerificationError) {
+            onVerificationError(
+              'camera', 
+              'PermissionDenied', 
+              'Camera access is required for medication verification. Please enable camera permissions in your browser settings.',
+              true // Mark as recoverable so user can try again
+            );
+          }
+        } else {
+          setPermissionState('denied');
+          setMessage('Unable to access camera. Please check your browser settings.');
+          
+          if (onVerificationError) {
+            onVerificationError(
+              'camera', 
+              error.name, 
+              'Unable to access camera. Please check your browser settings.',
+              true
+            );
+          }
+        }
       }
     }
   };

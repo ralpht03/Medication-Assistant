@@ -1,292 +1,240 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { AlertCircle, Check, Trash2, Filter, X } from 'lucide-react'
 import PageLayout from '@/components/PageLayout'
-import AlertsPanel from '@/components/AlertsPanel'
-import { AlertCircle, Filter } from 'lucide-react'
+import { Alerts } from '@/lib/types'
 
-interface Alert {
-  id: string;
-  type: string;
-  message: string;
-  timestamp: string;
-  read: boolean;
-  priority: 'critical' | 'high' | 'medium' | 'low';
-  medicationId?: string;
-  medicationName?: string;
-  patientId?: string;
-  patientName?: string;
+interface AlertFilters {
+  priority?: 'high' | 'medium' | 'low'
+  type?: 'overdose' | 'underdose' | 'verification_bypass'
+  read?: boolean
 }
 
-interface Patient {
-  id: string;
-  firstName: string;
-  lastName: string;
+interface AlertWithPatientInfo extends Alerts {
+  patientName: string;
+  patientEmail: string;
 }
-
-// Sample mock patients
-const mockPatients: Patient[] = [
-  { id: "patient-123", firstName: "John", lastName: "Doe" },
-  { id: "patient-456", firstName: "Jane", lastName: "Smith" },
-  { id: "patient-789", firstName: "Robert", lastName: "Johnson" }
-];
-
-// Sample mock alerts for demonstration
-const mockAlerts: Alert[] = [
-  // Critical alerts
-  {
-    id: "patient-overdose-123456",
-    type: "patient_overdose",
-    message: "URGENT: Patient John Doe took 2 pills instead of the recommended 1 for One_A_Day_Men (OVERDOSE).",
-    timestamp: new Date(Date.now() - 30 * 60000).toISOString(), // 30 minutes ago
-    read: false,
-    priority: "critical",
-    medicationId: "med-one-a-day-men",
-    medicationName: "One_A_Day_Men",
-    patientId: "patient-123",
-    patientName: "John Doe"
-  },
-  {
-    id: "patient-overdose-234567",
-    type: "patient_overdose",
-    message: "URGENT: Patient Jane Smith took 2 pills instead of the recommended 1 for One_A_Day_Women (OVERDOSE).",
-    timestamp: new Date(Date.now() - 2 * 3600000).toISOString(), // 2 hours ago
-    read: false,
-    priority: "critical",
-    medicationId: "med-one-a-day-women",
-    medicationName: "One_A_Day_Women",
-    patientId: "patient-456",
-    patientName: "Jane Smith"
-  },
-  
-  // High priority alerts
-  {
-    id: "patient-underdose-345678",
-    type: "patient_underdose",
-    message: "Patient Robert Johnson took 0 pills instead of the recommended 1 for One_A_Day_Men (underdose).",
-    timestamp: new Date(Date.now() - 5 * 3600000).toISOString(), // 5 hours ago
-    read: false,
-    priority: "high",
-    medicationId: "med-one-a-day-men",
-    medicationName: "One_A_Day_Men",
-    patientId: "patient-789",
-    patientName: "Robert Johnson"
-  },
-  {
-    id: "patient-missed-dose-456789",
-    type: "patient_missed_dose",
-    message: "Patient John Doe missed their scheduled dose of One_A_Day_Men at 08:00.",
-    timestamp: new Date(Date.now() - 8 * 3600000).toISOString(), // 8 hours ago
-    read: true,
-    priority: "high",
-    medicationId: "med-one-a-day-men",
-    medicationName: "One_A_Day_Men",
-    patientId: "patient-123",
-    patientName: "John Doe"
-  },
-  
-  // Medium priority alerts
-  {
-    id: "patient-verification-567890",
-    type: "patient_verification_bypassed",
-    message: "Patient Jane Smith bypassed verification for One_A_Day_Women. Please follow up.",
-    timestamp: new Date(Date.now() - 24 * 3600000).toISOString(), // 1 day ago
-    read: false,
-    priority: "medium",
-    medicationId: "med-one-a-day-women",
-    medicationName: "One_A_Day_Women",
-    patientId: "patient-456",
-    patientName: "Jane Smith"
-  },
-  {
-    id: "patient-pill-id-678901",
-    type: "patient_pill_identification_failed",
-    message: "Pill identification failed for Robert Johnson's One_A_Day_Men. The scanned pill doesn't match the prescribed medication.",
-    timestamp: new Date(Date.now() - 2 * 24 * 3600000).toISOString(), // 2 days ago
-    read: true,
-    priority: "medium",
-    medicationId: "med-one-a-day-men",
-    medicationName: "One_A_Day_Men",
-    patientId: "patient-789",
-    patientName: "Robert Johnson"
-  }
-];
 
 export default function AdminAlertsPage() {
-  const [alerts, setAlerts] = useState<Alert[]>(mockAlerts)
-  const [patients, setPatients] = useState<Patient[]>(mockPatients)
-  const [loading, setLoading] = useState(false) // Set to false to show mock data immediately
+  const [alerts, setAlerts] = useState<AlertWithPatientInfo[]>([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [patientFilter, setPatientFilter] = useState<string>('all')
-  const router = useRouter()
+  const [filters, setFilters] = useState<AlertFilters>({})
+  const [showFilters, setShowFilters] = useState(false)
 
-  // Filter alerts based on selected patient
-  useEffect(() => {
-    if (patientFilter === 'all') {
-      setAlerts(mockAlerts);
-    } else {
-      setAlerts(mockAlerts.filter(alert => alert.patientId === patientFilter));
-    }
-  }, [patientFilter]);
-
-  // In a real implementation, this would fetch actual data from the API
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Comment out the API call for now to use mock data
-        /*
-        setLoading(true)
-        setError(null)
-        */
-        
-        // This code is commented out to use mock data instead
-        /*
-        const userStr = localStorage.getItem('user')
-        if (!userStr) {
-          router.push('/login')
-          return
-        }
-
-        const user = JSON.parse(userStr)
-        const adminId = user.id || user.rowKey || user.RowKey
-        
-        // Fetch patients linked to this admin
-        const patientsResponse = await fetch('/api/admin/patients')
-        
-        if (!patientsResponse.ok) {
-          throw new Error(`Error fetching patients: ${patientsResponse.status}`)
-        }
-        
-        const patientsData = await patientsResponse.json()
-        setPatients(patientsData.map((patient: any) => ({
-          id: patient.id || patient.rowKey || patient.RowKey,
-          firstName: patient.firstName,
-          lastName: patient.lastName
-        })))
-        
-        // Fetch alerts for admin
-        const alertsUrl = patientFilter === 'all'
-          ? `/api/alerts?adminId=${adminId}`
-          : `/api/alerts?adminId=${adminId}&patientId=${patientFilter}`
-        
-        const alertsResponse = await fetch(alertsUrl)
-        
-        if (!alertsResponse.ok) {
-          throw new Error(`Error fetching alerts: ${alertsResponse.status}`)
-        }
-        
-        const alertsData = await alertsResponse.json()
-        setAlerts(alertsData)
-        */
-      } catch (error) {
-        console.error('Error fetching data:', error)
-        setError('Failed to load data. Please try again later.')
-      } finally {
-        // setLoading(false) // Commented out since we're using mock data
-      }
-    }
-
-    fetchData()
-  }, [router, patientFilter])
-
-  const handleAlertAction = async (alertId: string, action: 'acknowledge' | 'dismiss' | 'emergency') => {
+  const fetchAlerts = async () => {
     try {
-      const userStr = localStorage.getItem('user')
-      if (!userStr) return
-
-      const user = JSON.parse(userStr)
-      const userId = user.id || user.rowKey || user.RowKey
-
-      if (action === 'acknowledge') {
-        // Mark alert as read
-        await fetch('/api/alerts', {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ userId, alertId })
-        })
-
-        // Update local state
-        setAlerts(alerts.map(alert => 
-          alert.id === alertId ? { ...alert, read: true } : alert
-        ))
-      } else if (action === 'dismiss') {
-        // Delete the alert
-        await fetch(`/api/alerts?userId=${userId}&alertId=${alertId}`, {
-          method: 'DELETE'
-        })
-
-        // Update local state
-        setAlerts(alerts.filter(alert => alert.id !== alertId))
-      } else if (action === 'emergency') {
-        // For emergency contact, we could:
-        // 1. Show patient's emergency contact information
-        // 2. Initiate a call if on mobile
-        // 3. Send an emergency notification
-        
-        // Find the alert to get the patient ID
-        const alert = alerts.find(a => a.id === alertId)
-        if (alert && alert.patientId) {
-          router.push(`/admin/patients/${alert.patientId}/emergency-contact`)
-        }
+      setLoading(true)
+      const user = JSON.parse(localStorage.getItem('user') || 'null')
+      
+      if (!user?.id) {
+        setError('Please log in to view alerts')
+        setLoading(false)
+        return
       }
-    } catch (error) {
-      console.error('Error handling alert action:', error)
-      setError('Failed to process your request. Please try again.')
+
+      const queryParams = new URLSearchParams()
+      queryParams.append('adminId', user.id)
+      if (filters.priority) queryParams.append('priority', filters.priority)
+      if (filters.type) queryParams.append('type', filters.type)
+      if (filters.read !== undefined) queryParams.append('read', String(filters.read))
+
+      const response = await fetch(`/api/notifications?${queryParams.toString()}`)
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Unable to load alerts. Please try again later.')
+      }
+      
+      if (!data.data || data.data.length === 0) {
+        setAlerts([])
+        setError(null)
+        return
+      }
+      
+      setAlerts(data.data)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load alerts. Please try again later.')
+      setAlerts([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const markAsRead = async (alertId: string, userId: string) => {
+    try {
+      const response = await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, alertId })
+      })
+      
+      if (!response.ok) throw new Error('Failed to mark alert as read')
+      fetchAlerts()
+    } catch (err) {
+      console.error('Error marking alert as read:', err)
+    }
+  }
+
+  const deleteAlert = async (alertId: string, partitionKey: string) => {
+    try {
+      const response = await fetch(`/api/notifications?partitionKey=${encodeURIComponent(partitionKey)}&rowKey=${encodeURIComponent(alertId)}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete alert');
+      }
+
+      // Update local state by filtering out the deleted alert
+      setAlerts(prevAlerts => prevAlerts.filter(alert => alert.RowKey !== alertId));
+      setError(null); // Clear any previous errors
+    } catch (err) {
+      console.error('Error deleting alert:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete alert');
+    }
+  };
+
+  useEffect(() => {
+    fetchAlerts()
+  }, [filters])
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'high': return 'bg-red-100 text-red-800'
+      case 'medium': return 'bg-orange-100 text-orange-800'
+      case 'low': return 'bg-yellow-100 text-yellow-800'
+      default: return 'bg-gray-100 text-gray-800'
     }
   }
 
   return (
-    <PageLayout userType="admin" title="Alerts">
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Patient Medication Alerts</h1>
-          <p className="mt-1 text-gray-600">
-            Monitor and respond to patient medication alerts
-          </p>
+    <PageLayout userType="admin" title="Alerts Management">
+      <div className="mb-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-semibold text-gray-800">Alerts Dashboard</h2>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="flex items-center px-4 py-2 bg-white border rounded-md hover:bg-gray-50"
+          >
+            <Filter className="h-4 w-4 mr-2" />
+            Filters
+          </button>
         </div>
-        
-        <div className="mt-4 sm:mt-0">
-          <div className="flex items-center space-x-2">
-            <Filter className="h-5 w-5 text-gray-400" />
-            <select
-              value={patientFilter}
-              onChange={(e) => setPatientFilter(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Patients</option>
-              {patients.map(patient => (
-                <option key={patient.id} value={patient.id}>
-                  {patient.firstName} {patient.lastName}
-                </option>
-              ))}
-            </select>
+
+        {showFilters && (
+          <div className="mt-4 p-4 bg-white rounded-lg shadow">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Priority</label>
+                <select
+                  value={filters.priority || ''}
+                  onChange={(e) => setFilters({ ...filters, priority: e.target.value as any })}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                >
+                  <option value="">All</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Type</label>
+                <select
+                  value={filters.type || ''}
+                  onChange={(e) => setFilters({ ...filters, type: e.target.value as any })}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                >
+                  <option value="">All</option>
+                  <option value="overdose">Overdose</option>
+                  <option value="underdose">Underdose</option>
+                  <option value="verification_bypass">Verification Bypass</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Status</label>
+                <select
+                  value={filters.read === undefined ? '' : String(filters.read)}
+                  onChange={(e) => setFilters({ ...filters, read: e.target.value === '' ? undefined : e.target.value === 'true' })}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                >
+                  <option value="">All</option>
+                  <option value="true">Read</option>
+                  <option value="false">Unread</option>
+                </select>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700">
-          <div className="flex">
-            <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
-            <p>{error}</p>
-          </div>
-        </div>
-      )}
-
       {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        <div className="flex justify-center items-center p-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        </div>
+      ) : error ? (
+        <div className="text-red-500 p-4">{error}</div>
+      ) : alerts.length === 0 ? (
+        <div className="text-center p-8">
+          <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900">No alerts found</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            {Object.keys(filters).length > 0 
+              ? "Try adjusting your filters or check back later for new alerts."
+              : "There are currently no alerts to display. Check back later for updates."}
+          </p>
         </div>
       ) : (
-        <AlertsPanel 
-          alerts={alerts} 
-          onAlertAction={handleAlertAction} 
-          showPatientInfo={true}
-        />
+        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+          <ul className="divide-y divide-gray-200">
+            {alerts.map((alert) => (
+              <li 
+                key={`${alert.PartitionKey}-${alert.RowKey}-${alert.Timestamp}`} 
+                className="p-4 hover:bg-gray-50"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <AlertCircle className={`h-5 w-5 ${getPriorityColor(alert.priority || 'low')}`} />
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-gray-900">{alert.message}</p>
+                      <p className="text-sm text-gray-500">
+                        {alert.patientName} • {alert.patientEmail}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {new Date(alert.Timestamp).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {!alert.read && (
+                      <button
+                        onClick={() => markAsRead(alert.RowKey, alert.PartitionKey)}
+                        className="p-2 text-green-600 hover:text-green-800"
+                        title="Mark as read"
+                      >
+                        <Check className="h-5 w-5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => deleteAlert(alert.RowKey, alert.PartitionKey)}
+                      className="p-2 text-red-600 hover:text-red-800"
+                      title="Delete alert"
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </PageLayout>
   )
-}
+} 

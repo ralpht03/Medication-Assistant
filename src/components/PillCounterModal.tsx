@@ -5,8 +5,8 @@ import { Plus, Minus } from 'lucide-react';
 
 interface PillCounterModalProps {
   medicationName: string;
-  recommendedCount: number;
-  onConfirm: (count: number) => void;
+  recommendedCount: string;
+  onConfirm: (count: string) => void;
   onCancel: () => void;
   isVisible: boolean;
 }
@@ -22,6 +22,12 @@ const PillCounterModal = ({
   
   if (!isVisible) return null;
   
+  const handlePillCountChange = (increment: boolean) => {
+    const currentCount = parseInt(pillCount);
+    const newCount = increment ? currentCount + 1 : Math.max(1, currentCount - 1);
+    setPillCount(newCount.toString());
+  };
+  
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 max-w-md w-full">
@@ -32,7 +38,7 @@ const PillCounterModal = ({
         
         <div className="flex items-center justify-center mb-6">
           <button 
-            onClick={() => setPillCount(Math.max(1, pillCount - 1))}
+            onClick={() => handlePillCountChange(false)}
             className="p-2 bg-gray-200 rounded-l-lg"
           >
             <Minus size={20} />
@@ -41,7 +47,7 @@ const PillCounterModal = ({
             {pillCount}
           </div>
           <button 
-            onClick={() => setPillCount(pillCount + 1)}
+            onClick={() => handlePillCountChange(true)}
             className="p-2 bg-gray-200 rounded-r-lg"
           >
             <Plus size={20} />
@@ -50,7 +56,7 @@ const PillCounterModal = ({
         
         <div className="text-center mb-4">
           <p className="text-sm text-gray-600">
-            Recommended: {recommendedCount} {recommendedCount === 1 ? 'pill' : 'pills'}
+            Recommended: {recommendedCount} {recommendedCount === "1" ? 'pill' : 'pills'}
           </p>
         </div>
         

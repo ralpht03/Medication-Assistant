@@ -30,7 +30,7 @@ const MedicationAssignmentModal = ({
   const [prescribingDoctor, setPrescribingDoctor] = useState("")
   const [pharmacy, setPharmacy] = useState("")
   const [notes, setNotes] = useState("")
-  const [refillsRemaining, setRefillsRemaining] = useState<number>(0)
+  const [refillsRemaining, setRefillsRemaining] = useState<string>("0")
   const [timeOfDay, setTimeOfDay] = useState<string[]>([])
 
   // UI state
@@ -55,6 +55,15 @@ const MedicationAssignmentModal = ({
         : [...prev, timeId]
     )
   }
+
+  // Update the refills input handler
+  const handleRefillsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    // Only allow numeric input
+    if (/^\d*$/.test(value)) {
+      setRefillsRemaining(value);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -281,10 +290,10 @@ const MedicationAssignmentModal = ({
                   </label>
                   <input
                     id="refills"
-                    type="number"
-                    min="0"
+                    type="text"
+                    pattern="\d*"
                     value={refillsRemaining}
-                    onChange={(e) => setRefillsRemaining(parseInt(e.target.value))}
+                    onChange={handleRefillsChange}
                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                   />
                 </div>

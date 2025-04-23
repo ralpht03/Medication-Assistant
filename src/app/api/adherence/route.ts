@@ -1,103 +1,103 @@
 import { NextResponse } from "next/server";
-import { TableClient } from "@azure/data-tables";
-import { createTableClient } from '@/lib/azure-table-utils';
 import { AzureTableService } from '@/lib/azure/table-service';
+import { VerificationLogs, Alerts } from '@/lib/types';
+import { createTableClient } from "@/lib/azure-table-utils";
 
 // Constants for table names
-const ADHERENCE_TABLE = 'Adherence';
 const VERIFICATION_LOGS_TABLE = 'VerificationLogs';
 const ALERTS_TABLE = 'Alerts';
 
 // Table services
-const adherenceTable = new AzureTableService(ADHERENCE_TABLE);
-const alertsTable = new AzureTableService(ALERTS_TABLE);
+const verificationLogsService = new AzureTableService(VERIFICATION_LOGS_TABLE);
+const alertsService = new AzureTableService(ALERTS_TABLE);
 
-// Interface for verification logs
-interface VerificationLog {
-  medicationId: string;
-  patientId: string;
-  Timestamp: string;
-  verified: boolean;
-  status: 'taken' | 'missed' | 'skipped';
-  notes?: string;
-}
-
-// Interface for adherence records
-interface Adherence {
-  PartitionKey: string;
-  RowKey: string;
-  Timestamp: string;
-  patientId: string;
-  adherencePercentage: string;
-  dailyAdherence: string;
-  pillCount: string;
-  recommendedCount: string;
-  isCorrectDose: string;
-  bypassVerification: string;
-  notes: string;
-}
-
-// Interface for the response format that matches what the dashboard expects
+// Interface for the response format
 interface AdherenceResponse {
   adherencePercentage: string;
-  streak: number;
-  dailyAdherence: string; // JSON string of daily adherence data
-  totalVerifications: number;
-  successfulVerifications: number;
+  streak: string;
+  dailyAdherence: Array<{
+    date: string;
+    taken: string;
+    total: string;
+  }>;
+  totalVerifications: string;
+  successfulVerifications: string;
+  missedVerifications: string;
+  skippedVerifications: string;
+  verificationLogs: VerificationLogs[];
 }
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const patientId = searchParams.get('patientId');
+    const medicationId = searchParams.get('medicationId'); // Optional: filter by specific medication
 
     if (!patientId) {
       return NextResponse.json({ error: "Patient ID is required" }, { status: 400 });
     }
 
-    // Create table client
-    const verificationLogsTable = createTableClient(VERIFICATION_LOGS_TABLE);
-
     // Get verification logs for the past 30 days
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    const filter = `PartitionKey eq '${patientId}' and Timestamp ge datetime'${thirtyDaysAgo.toISOString()}'`;
-    const verificationLogsEntities = verificationLogsTable.listEntities({ queryOptions: { filter } });
+    // Build filter based on parameters
+    let filter = `PartitionKey eq '${patientId}' and Timestamp ge datetime'${thirtyDaysAgo.toISOString()}'`;
+    if (medicationId) {
+      filter += ` and medicationId eq '${medicationId}'`;
+    }
+    
+    const verificationLogsEntities = await verificationLogsService.queryEntities<VerificationLogs>(filter);
 
     // Collect all verification logs
-    const verificationLogs: VerificationLog[] = [];
-    for await (const entity of verificationLogsEntities) {
+    const verificationLogs: VerificationLogs[] = [];
+    for (const entity of verificationLogsEntities) {
       verificationLogs.push({
-        medicationId: entity.medicationId as string,
-        patientId: entity.patientId as string,
+        PartitionKey: entity.PartitionKey as string,
+        RowKey: entity.RowKey as string,
         Timestamp: entity.Timestamp as string,
-        verified: entity.verified as boolean,
-        status: (entity.status as 'taken' | 'missed' | 'skipped') || (entity.verified ? 'taken' : 'missed'),
-        notes: entity.notes as string | undefined
+        medicationName: entity.medicationName as string,
+        medicationId: entity.medicationId as string,
+        pillCount: entity.pillCount as string,
+        recommendedPillCount: entity.recommendedPillCount as string,
+        timeTaken: entity.timeTaken as string,
+        status: entity.status as 'taken' | 'missed' | 'skipped',
+        notes: entity.notes as string,
+        verificationMethod: entity.verificationMethod as 'camera' | 'manual' | 'helper',
+        isCorrectDose: entity.isCorrectDose as boolean
       });
     }
 
     // Calculate adherence metrics
     const totalVerifications = verificationLogs.length;
-    const successfulVerifications = verificationLogs.filter(log => log.verified || log.status === 'taken').length;
+    const successfulVerifications = verificationLogs.filter(log => log.status === 'taken').length;
+    const missedVerifications = verificationLogs.filter(log => log.status === 'missed').length;
+    const skippedVerifications = verificationLogs.filter(log => log.status === 'skipped').length;
+    
     const adherencePercentage = totalVerifications > 0 
-      ? (successfulVerifications / totalVerifications) * 100 
-      : 0;
+      ? Math.round((successfulVerifications / totalVerifications) * 100).toString()
+      : "0";
 
     // Calculate streak
     let streak = calculateStreak(verificationLogs);
 
-    // Group by date for daily adherence
+    // Calculate daily adherence
     const dailyAdherence = calculateDailyHistory(verificationLogs);
 
-    // Prepare response in the format expected by the dashboard
+    // Prepare response
     const response: AdherenceResponse = {
-      adherencePercentage: adherencePercentage.toFixed(2),
-      streak,
-      dailyAdherence: JSON.stringify(dailyAdherence),
-      totalVerifications,
-      successfulVerifications
+      adherencePercentage,
+      streak: streak.toString(),
+      dailyAdherence: dailyAdherence.map(day => ({
+        date: day.date,
+        taken: day.taken.toString(),
+        total: day.total.toString()
+      })),
+      totalVerifications: totalVerifications.toString(),
+      successfulVerifications: successfulVerifications.toString(),
+      missedVerifications: missedVerifications.toString(),
+      skippedVerifications: skippedVerifications.toString(),
+      verificationLogs
     };
 
     return NextResponse.json(response);
@@ -113,70 +113,129 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const data = await req.json();
+    console.log('Received POST request data:', data);
+    
     const { 
       medicationId, 
       patientId, 
       status = 'taken', 
       notes = '',
       pillCount,
-      recommendedCount,
-      bypassVerification = false
+      recommendedPillCount,
+      bypassVerification,
     } = data;
     
     if (!medicationId || !patientId) {
+      console.error('Missing required fields:', { medicationId, patientId });
       return NextResponse.json({ 
         error: "Both medicationId and patientId are required" 
       }, { status: 400 });
     }
 
-    // Create table client for verification logs
-    const verificationLogsTable = createTableClient(VERIFICATION_LOGS_TABLE);
-    
-    // Create a unique record ID using timestamp
-    const timestamp = new Date().toISOString();
-    const rowKey = `${medicationId}-${timestamp}`;
+    // Validate status
+    if (!['taken', 'missed', 'skipped'].includes(status)) {
+      console.error('Invalid status:', status);
+      return NextResponse.json({ 
+        error: "Invalid status. Must be 'taken', 'missed', or 'skipped'" 
+      }, { status: 400 });
+    }
 
-    // Create verification log entity
-    const verificationLog = {
-      partitionKey: patientId,
-      rowKey: rowKey,
-      medicationId,
-      patientId,
-      Timestamp: timestamp,
-      verified: status === 'taken',
-      status,
-      notes: notes || ''
-    };
-
-    // Save to Azure Table
-    await verificationLogsTable.createEntity(verificationLog);
-
-    // If pill count information is provided, handle adherence record and alerts
-    if (pillCount !== undefined && recommendedCount !== undefined) {
-      // Check if this is an overdose or underdose
-      const isOverdose = pillCount > recommendedCount;
-      const isUnderdose = pillCount < recommendedCount;
-      const isCorrectDose = !isOverdose && !isUnderdose;
+    // Get medication information
+    try {
+      const medicationsService = new AzureTableService('Medications');
+      const medicationEntity = await medicationsService.getEntity(patientId, medicationId);
+      console.log('Retrieved medication entity:', medicationEntity);
       
-      // Create adherence record
-      const adherenceRecord: Adherence = {
-        PartitionKey: medicationId,
-        RowKey: timestamp,
+      const medication = {
+        name: medicationEntity.name as string,
+        dosage: medicationEntity.dosage as string,
+        recommendedPillCount: medicationEntity.recommendedPillCount as string
+      };
+      
+      // Create a unique record ID using timestamp
+      const timestamp = new Date().toISOString();
+      const rowKey = `${medicationId}-${timestamp}`;
+
+      // Check for duplicate verification within the last 15 minutes
+      const fifteenMinutesAgo = new Date();
+      fifteenMinutesAgo.setMinutes(fifteenMinutesAgo.getMinutes() - 15);
+      
+      const duplicateFilter = `PartitionKey eq '${patientId}' and medicationId eq '${medicationId}' and Timestamp ge datetime'${fifteenMinutesAgo.toISOString()}'`;
+      console.log('Checking for duplicates with filter:', duplicateFilter);
+      
+      const recentLogs = await verificationLogsService.queryEntities(duplicateFilter);
+      console.log('Found recent logs:', recentLogs);
+      
+      if (recentLogs.length > 0) {
+        // If there's a duplicate, update the existing record instead of creating a new one
+        const existingLog = recentLogs[0];
+        const updatedLog = {
+          ...existingLog,
+          status,
+          notes,
+          pillCount,
+          recommendedPillCount: medication.recommendedPillCount,
+          timeTaken: timestamp,
+          isCorrectDose: pillCount === medication.recommendedPillCount
+        };
+        
+        console.log('Updating existing log:', updatedLog);
+        await verificationLogsService.updateEntity(updatedLog);
+        
+        return NextResponse.json({ 
+          success: true,
+          message: "Verification log updated successfully",
+          timestamp
+        });
+      }
+
+      // Check if this is an overdose or underdose
+      const isOverdose = parseInt(pillCount) > parseInt(medication.recommendedPillCount);
+      const isUnderdose = parseInt(pillCount) < parseInt(medication.recommendedPillCount);
+      const isCorrectDose = !isOverdose && !isUnderdose;
+
+      // Create verification log
+      const verificationLog: VerificationLogs = {
+        PartitionKey: patientId,
+        RowKey: rowKey,
         Timestamp: timestamp,
-        patientId,
-        adherencePercentage: isCorrectDose ? "100" : "0", // 100% if correct dose, 0% otherwise
-        dailyAdherence: JSON.stringify([]), // Will be updated later
-        pillCount: pillCount.toString(),
-        recommendedCount: recommendedCount.toString(),
-        isCorrectDose: isCorrectDose.toString(),
-        bypassVerification: bypassVerification.toString(),
-        notes: notes
+        medicationName: medication.name,
+        medicationId: medicationId,
+        pillCount: pillCount,
+        recommendedPillCount: medication.recommendedPillCount,
+        timeTaken: timestamp,
+        status: status,
+        notes: notes,
+        verificationMethod: bypassVerification ? 'manual' : 'camera',
+        isCorrectDose: isCorrectDose
       };
 
-      await adherenceTable.createEntity(adherenceRecord);
+      console.log('Creating new verification log:', verificationLog);
+      // Save to Azure Table
+      try {
+        await verificationLogsService.createEntity(verificationLog);
+        console.log('Successfully created verification log in Azure Table');
+      } catch (error) {
+        console.error('Failed to create verification log:', error);
+        throw error;
+      }
       
+      // Helper function to determine alert priority
+      const getAlertPriority = (type: 'overdose' | 'underdose' | 'verification_bypass'): 'high' | 'medium' | 'low' => {
+        switch (type) {
+          case 'overdose':
+            return 'high';
+          case 'underdose':
+            return 'medium';
+          case 'verification_bypass':
+            return 'low';
+          default:
+            return 'low';
+        }
+      };
+
       // Create alerts for different scenarios
-      const alerts = [];
+      const alerts: Alerts[] = [];
       
       // Get medication details for better alert messages
       const medicationsTable = createTableClient('Medications');
@@ -200,86 +259,40 @@ export async function POST(req: Request) {
       
       // If verification was bypassed, create alerts for both patient and admin
       if (bypassVerification) {
-        // Patient alert
-        const patientBypassAlert = {
-          partitionKey: patientId,
-          rowKey: `bypass-${timestamp}`,
+        const bypassAlert: Alerts = {
+          PartitionKey: patientId,
+          RowKey: `bypass-${timestamp}`,
           Timestamp: timestamp,
+          type: 'verification_bypass',
+          message: `Medication verification bypassed for ${medication.name}. Reason: ${notes}`,
+          priority: getAlertPriority('verification_bypass'),
+          medicationId: medicationId,
           userId: patientId,
-          patientId,
-          medicationId,
-          medicationName,
-          type: 'verification_bypassed',
-          message: `You bypassed verification for ${medicationName}. Please ensure you're taking the correct medication.`,
-          read: false,
-          priority: 'high'
+          read: false
         };
-        
-        alerts.push(patientBypassAlert);
-        
-        // Find linked admin(s) for this patient
-        try {
-          // Query for admins linked to this patient
-          const adminFilter = `role eq 'admin' and linkedPatients ne null`;
-          const adminEntities = usersTable.listEntities({ queryOptions: { filter: adminFilter } });
-          
-          for await (const admin of adminEntities) {
-            // Check if this admin is linked to the patient
-            const linkedPatients = admin.linkedPatients ? JSON.parse(admin.linkedPatients as string) : [];
-            if (linkedPatients.includes(patientId)) {
-              const adminBypassAlert = {
-                partitionKey: admin.rowKey as string,
-                rowKey: `patient-bypass-${timestamp}`,
-                Timestamp: timestamp,
-                userId: admin.rowKey as string,
-                patientId,
-                patientName,
-                medicationId,
-                medicationName,
-                type: 'patient_verification_bypassed',
-                message: `Patient ${patientName} bypassed verification for ${medicationName}. Please follow up.`,
-                read: false,
-                priority: 'high'
-              };
-              
-              alerts.push(adminBypassAlert);
-            }
-          }
-        } catch (error) {
-          console.error("Error finding linked admins:", error);
-        }
+        alerts.push(bypassAlert);
       }
       
       // If overdose or underdose, create alerts for both patient and admin
       if (isOverdose || isUnderdose) {
         const alertType = isOverdose ? 'overdose' : 'underdose';
+        const alertMessage = isOverdose
+            ? `Overdose detected for ${medication.name}. Taken: ${pillCount}, Recommended: ${medication.recommendedPillCount}`
+          : `Underdose detected for ${medication.name}. Taken: ${pillCount}, Recommended: ${medication.recommendedPillCount}`;
         
-        // Patient alert message
-        const patientAlertMessage = isOverdose
-          ? `You took ${pillCount} pills instead of the recommended ${recommendedCount} for ${medicationName}. This is an overdose. Please contact your healthcare provider immediately.`
-          : `You took ${pillCount} pills instead of the recommended ${recommendedCount} for ${medicationName}. This is less than prescribed.`;
-        
-        // Admin alert message
-        const adminAlertMessage = isOverdose
-          ? `URGENT: Patient ${patientName} took ${pillCount} pills instead of the recommended ${recommendedCount} for ${medicationName} (OVERDOSE).`
-          : `Patient ${patientName} took ${pillCount} pills instead of the recommended ${recommendedCount} for ${medicationName} (underdose).`;
-        
-        // Patient alert
-        const patientDoseAlert = {
-          partitionKey: patientId,
-          rowKey: `${alertType}-${timestamp}`,
+        const doseAlert: Alerts = {
+          PartitionKey: patientId,
+          RowKey: `${alertType}-${timestamp}`,
           Timestamp: timestamp,
-          userId: patientId,
-          patientId,
-          medicationId,
-          medicationName,
           type: alertType,
-          message: patientAlertMessage,
-          read: false,
-          priority: isOverdose ? 'critical' : 'high'
+          message: alertMessage,
+          priority: getAlertPriority(alertType),
+          medicationId: medicationId,
+          userId: patientId,
+          read: false
         };
         
-        alerts.push(patientDoseAlert);
+        alerts.push(doseAlert);
         
         // Find linked admin(s) for this patient
         try {
@@ -292,8 +305,8 @@ export async function POST(req: Request) {
             const linkedPatients = admin.linkedPatients ? JSON.parse(admin.linkedPatients as string) : [];
             if (linkedPatients.includes(patientId)) {
               const adminDoseAlert = {
-                partitionKey: admin.rowKey as string,
-                rowKey: `patient-${alertType}-${timestamp}`,
+                PartitionKey: admin.rowKey as string,
+                RowKey: `patient-${alertType}-${timestamp}`,
                 Timestamp: timestamp,
                 userId: admin.rowKey as string,
                 patientId,
@@ -301,7 +314,7 @@ export async function POST(req: Request) {
                 medicationId,
                 medicationName,
                 type: `patient_${alertType}`,
-                message: adminAlertMessage,
+                message: `Patient ${patientName} has a ${alertType} for ${medicationName}. Taken: ${pillCount}, Recommended: ${medication.recommendedPillCount}`,
                 read: false,
                 priority: isOverdose ? 'critical' : 'high'
               };
@@ -316,45 +329,56 @@ export async function POST(req: Request) {
       
       // Save all alerts
       for (const alert of alerts) {
-        await alertsTable.createEntity(alert);
+        await alertsService.createEntity(alert);
       }
       
       return NextResponse.json({
         success: true,
-        message: "Verification log and adherence record created successfully",
+        message: "Verification log created successfully",
         timestamp,
         alerts: alerts.length > 0 ? alerts.map(a => a.type) : []
       });
+    } catch (error) {
+      console.error('Error in medication verification process:', error);
+      return NextResponse.json({ 
+        error: "Error creating verification log",
+        details: error instanceof Error ? error.message : String(error)
+      }, { status: 500 });
     }
-
-    // If no pill count info, just return success for verification log
-    return NextResponse.json({
-      success: true,
-      message: "Verification log created successfully",
-      timestamp
-    });
   } catch (error) {
-    console.error("Error recording adherence:", error);
+    console.error("Error processing request:", error);
     return NextResponse.json({ 
-      error: "Error recording adherence",
+      error: "Error processing request",
       details: error instanceof Error ? error.message : String(error)
     }, { status: 500 });
   }
 }
 
 // Helper functions for calculating adherence statistics
-function calculateStreak(records: VerificationLog[]): number {
+function calculateStreak(records: VerificationLogs[]): number {
   if (records.length === 0) return 0;
   
   // Group records by date to check if each day had at least one taken medication
-  const recordsByDate = new Map<string, VerificationLog[]>();
+  const recordsByDate = new Map<string, VerificationLogs[]>();
   
   records.forEach(record => {
-    const date = new Date(record.Timestamp).toISOString().split('T')[0];
-    if (!recordsByDate.has(date)) {
-      recordsByDate.set(date, []);
+    try {
+      // Ensure Timestamp exists and is a valid string
+      if (!record.Timestamp || typeof record.Timestamp !== 'string') {
+        console.warn('Invalid Timestamp in record:', record);
+        return;
+      }
+      
+      // Azure Table Storage timestamps are in ISO format with 'Z' suffix
+      // Remove any potential timezone offset and convert to local date
+      const date = new Date(record.Timestamp.replace('Z', '')).toISOString().split('T')[0];
+      if (!recordsByDate.has(date)) {
+        recordsByDate.set(date, []);
+      }
+      recordsByDate.get(date)!.push(record);
+    } catch (error) {
+      console.error('Error processing record timestamp:', error, record);
     }
-    recordsByDate.get(date)!.push(record);
   });
   
   // Convert to array and sort by date (most recent first)
@@ -365,9 +389,7 @@ function calculateStreak(records: VerificationLog[]): number {
   
   // Count consecutive days with at least one taken medication
   for (const [_, dayRecords] of dateRecords) {
-    const hasTakenMedication = dayRecords.some(record => 
-      record.verified || record.status === 'taken'
-    );
+    const hasTakenMedication = dayRecords.some(record => record.status === 'taken');
     
     if (hasTakenMedication) {
       streak++;
@@ -379,7 +401,7 @@ function calculateStreak(records: VerificationLog[]): number {
   return streak;
 }
 
-function calculateDailyHistory(records: VerificationLog[]): Array<{date: string; taken: number; total: number}> {
+function calculateDailyHistory(records: VerificationLogs[]): Array<{date: string; taken: number; total: number}> {
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const today = new Date();
   const history = [];
@@ -392,12 +414,25 @@ function calculateDailyHistory(records: VerificationLog[]): Array<{date: string;
     
     // Filter records for this date
     const dayRecords = records.filter(record => {
-      const recordDate = new Date(record.Timestamp).toISOString().split('T')[0];
-      return recordDate === dateStr;
+      try {
+        // Ensure Timestamp exists and is a valid string
+        if (!record.Timestamp || typeof record.Timestamp !== 'string') {
+          console.warn('Invalid Timestamp in record:', record);
+          return false;
+        }
+        
+        // Azure Table Storage timestamps are in ISO format with 'Z' suffix
+        // Remove any potential timezone offset and convert to local date
+        const recordDate = new Date(record.Timestamp.replace('Z', '')).toISOString().split('T')[0];
+        return recordDate === dateStr;
+      } catch (error) {
+        console.error('Error processing record timestamp:', error, record);
+        return false;
+      }
     });
     
     // Count taken and total for the day
-    const taken = dayRecords.filter(record => record.verified || record.status === 'taken').length;
+    const taken = dayRecords.filter(record => record.status === 'taken').length;
     const total = dayRecords.length;
     
     history.push({

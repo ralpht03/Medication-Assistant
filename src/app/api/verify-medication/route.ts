@@ -104,45 +104,25 @@ export async function POST(request: Request) {
       }, { status: 200 }); // Return 200 as this is a valid response
     }
 
+    // Get medication information for the response
+    const medicationsService = new AzureTableService('Medications');
+    const medicationEntity = await medicationsService.getEntity(patientId, medicationId);
+    const medication = {
+      name: medicationEntity.name as string,
+      dosage: medicationEntity.dosage as string
+    };
+
     const result = {
       verified: topPrediction.probability > 0.75,
       pill_name: topPrediction.tagName,
       confidence: topPrediction.probability,
       message: topPrediction.probability > 0.75
         ? `Successfully identified as ${topPrediction.tagName}`
-        : 'Low confidence detection. Please try again with better lighting'
+        : 'Low confidence detection. Please try again with better lighting',
+      medication: medication
     };
     
     console.log('Verification result:', result);
-
-    // Log verification attempt
-    const timestamp = new Date().toISOString();
-    const verificationLog: VerificationLogs = {
-      PartitionKey: patientId,
-      RowKey: timestamp,
-      Timestamp: timestamp,
-      patientId,
-      method: 'image',
-      verified: result.verified,
-      verificationData: JSON.stringify(result),
-      imageUrl: '', // Store image URL if needed
-      pillImageUrl: '', // Store pill image URL if needed
-      helperId: '',
-      patientConfirmation: false,
-      helperConfirmation: false
-    };
-
-    console.log('Saving verification log:', {
-      patientId,
-      medicationId,
-      verified: result.verified,
-      timestamp
-    });
-
-    // Store verification log in Azure
-    const tableService = new AzureTableService('VerificationLogs');
-    await tableService.createEntity(verificationLog);
-    console.log('Verification log saved successfully');
 
     return NextResponse.json(result);
   } catch (error) {

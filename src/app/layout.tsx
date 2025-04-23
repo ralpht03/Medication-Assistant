@@ -16,12 +16,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
-        <script async src="https://docs.opencv.org/master/opencv.js"></script>
-      </head>
-      <body className={inter.className}>
-        <div className="flex h-screen bg-gray-100">{children}</div>
-      </body>
+      <body className={inter.className}>{children}</body>
     </html>
   )
 }

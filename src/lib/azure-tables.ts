@@ -4,6 +4,7 @@ import { Medication, AzureTableUser, AzureTablePatient, SignupData, LoginData, A
 import bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
+import { Medications } from "./types";
 
 config();
 
@@ -69,10 +70,12 @@ export class MedicationService {
         startDate: medication.startDate || now,
         endDate: medication.endDate || '',
         verificationMethod: medication.verificationMethod || 'manual-entry',
+        patientId: patientId,
         prescribingDoctor: medication.prescribingDoctor || '',
         pharmacy: medication.pharmacy || '',
         notes: medication.notes || '',
         refillsRemaining: medication.refillsRemaining || 0,
+        recommendedPillCount: medication.recommendedPillCount || 1,
         lastFilled: medication.lastFilled || '',
         createdAt: now,
         updatedAt: now

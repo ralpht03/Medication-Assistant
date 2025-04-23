@@ -1,217 +1,227 @@
-import { useState } from 'react';
-import { AlertCircle, Clock, PillIcon, User, X, Check, AlertTriangle } from 'lucide-react';
+import { AlertCircle, Clock, User, PillIcon, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react"
+import { useEffect, useState, useCallback, useRef } from "react"
+import { Alerts } from "@/lib/types"
 
-interface Alert {
+interface Alert extends Alerts {
   id: string;
-  type: string;
-  message: string;
-  timestamp: string;
-  read: boolean;
-  priority: 'critical' | 'high' | 'medium' | 'low';
-  medicationId?: string;
-  medicationName?: string;
-  patientId?: string;
-  patientName?: string;
+  time: string;
+  patient: string;
 }
 
-interface AlertsPanelProps {
-  alerts: Alert[];
-  onAlertAction?: (alertId: string, action: 'acknowledge' | 'dismiss' | 'emergency') => void;
-  showPatientInfo?: boolean;
-  className?: string;
-}
+const POLLING_INTERVAL = {
+  normal: 30000,    // 30 seconds for normal operation
+  error: 60000,     // 1 minute after an error
+  critical: 10000   // 10 seconds for critical alerts
+};
 
-const AlertsPanel = ({
-  alerts,
-  onAlertAction,
-  showPatientInfo = false,
-  className = ''
-}: AlertsPanelProps) => {
-  const [filter, setFilter] = useState<'all' | 'unread' | 'critical'>('all');
+const AlertsPanel = () => {
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [pollingInterval, setPollingInterval] = useState(POLLING_INTERVAL.normal);
+  const isMounted = useRef(true);
+  const timeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [totalPages, setTotalPages] = useState(1);
 
-  // Filter alerts based on the selected filter
-  const filteredAlerts = alerts.filter(alert => {
-    if (filter === 'unread') return !alert.read;
-    if (filter === 'critical') return alert.priority === 'critical';
-    return true;
-  });
+  const processAlertData = (data: Alerts[]): Alert[] => {
+    return data.map((alert: Alerts) => ({
+      ...alert,
+      id: alert.RowKey,
+      time: new Date(alert.Timestamp).toLocaleTimeString(),
+      patient: alert.PartitionKey
+    }));
+  };
 
-  // Group alerts by type
-  const groupedAlerts = filteredAlerts.reduce((groups, alert) => {
-    // Simplify the type for grouping
-    let groupType = alert.type;
-    
-    // Group patient-specific alerts with their counterparts
-    if (groupType.startsWith('patient_')) {
-      groupType = groupType.substring(8); // Remove 'patient_' prefix
+  const fetchAlerts = useCallback(async () => {
+    if (!isMounted.current) return;
+
+    try {
+      setRefreshing(true);
+      const response = await fetch(`/api/notifications?page=${page}&limit=10`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch alerts');
+      }
+      
+      const { data, pagination } = await response.json();
+      const processedAlerts = processAlertData(data);
+
+      // Only update if data has changed
+      if (JSON.stringify(processedAlerts) !== JSON.stringify(alerts)) {
+        setAlerts(processedAlerts);
+      }
+
+      setTotalPages(pagination.totalPages);
+      setHasMore(page < pagination.totalPages);
+      setError(null);
+      setRetryCount(0);
+      setPollingInterval(POLLING_INTERVAL.normal);
+    } catch (err) {
+      console.error('Error fetching alerts:', err);
+      setRetryCount(prev => prev + 1);
+      setPollingInterval(POLLING_INTERVAL.error);
+      
+      if (retryCount >= 3) {
+        setError('Failed to load alerts after multiple attempts. Please try again later.');
+      } else {
+        setError('Failed to load alerts. Retrying...');
+      }
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-    
-    const group = groups.find(g => g.type === groupType);
-    if (group) {
-      group.alerts.push(alert);
-    } else {
-      groups.push({
-        type: groupType,
-        alerts: [alert]
-      });
+  }, [alerts, retryCount, page]);
+
+  useEffect(() => {
+    isMounted.current = true;
+
+    const poll = async () => {
+      if (!isMounted.current) return;
+      await fetchAlerts();
+      timeoutId.current = setTimeout(poll, pollingInterval);
+    };
+
+    poll();
+
+    return () => {
+      isMounted.current = false;
+      if (timeoutId.current) {
+        clearTimeout(timeoutId.current);
+      }
+    };
+  }, [fetchAlerts, pollingInterval]);
+
+  const handleRetry = () => {
+    setRetryCount(0);
+    setPollingInterval(POLLING_INTERVAL.normal);
+    fetchAlerts();
+  };
+
+  const handleNextPage = () => {
+    if (hasMore) {
+      setPage(prev => prev + 1);
     }
-    return groups;
-  }, [] as { type: string; alerts: Alert[] }[]);
+  };
+
+  const handlePrevPage = () => {
+    if (page > 1) {
+      setPage(prev => prev - 1);
+    }
+  };
+
+  const getPriorityColor = (priority: Alert["priority"]) => {
+    switch (priority) {
+      case "high":
+        return "bg-red-50 border-red-500";
+      case "medium":
+        return "bg-orange-50 border-orange-500";
+      case "low":
+        return "bg-yellow-50 border-yellow-500";
+      default:
+        return "bg-gray-50 border-gray-500";
+    }
+  };
 
   // Get alert icon based on type
   const getAlertIcon = (type: string) => {
     switch (type) {
-      case 'overdose':
-      case 'patient_overdose':
+      case "overdose":
         return <AlertCircle className="h-5 w-5 text-red-500" />;
-      case 'underdose':
-      case 'patient_underdose':
-        return <AlertTriangle className="h-5 w-5 text-orange-500" />;
-      case 'missed_dose':
-      case 'patient_missed_dose':
-        return <Clock className="h-5 w-5 text-yellow-500" />;
-      case 'verification_bypassed':
-      case 'patient_verification_bypassed':
-        return <PillIcon className="h-5 w-5 text-blue-500" />;
-      case 'pill_identification_failed':
-      case 'patient_pill_identification_failed':
-        return <X className="h-5 w-5 text-purple-500" />;
+      case "underdose":
+        return <AlertCircle className="h-5 w-5 text-orange-500" />;
+      case "verification_bypass":
+        return <AlertCircle className="h-5 w-5 text-yellow-500" />;
       default:
         return <AlertCircle className="h-5 w-5 text-gray-500" />;
     }
   };
 
-  // Format alert type for display
-  const formatAlertType = (type: string) => {
-    // Convert snake_case to Title Case
-    return type
-      .split('_')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  };
+  if (loading && !refreshing) {
+    return (
+      <div className="flex justify-center items-center p-4">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
 
-  // Format timestamp for display
-  const formatTimestamp = (timestamp: string) => {
-    const date = new Date(timestamp);
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: 'numeric',
-      hour12: true
-    }).format(date);
-  };
-
-  // Get priority-based styling
-  const getPriorityStyles = (priority: Alert['priority']) => {
-    switch (priority) {
-      case 'critical':
-        return 'border-l-red-500 bg-red-50';
-      case 'high':
-        return 'border-l-orange-500 bg-orange-50';
-      case 'medium':
-        return 'border-l-yellow-500 bg-yellow-50';
-      case 'low':
-        return 'border-l-blue-500 bg-blue-50';
-      default:
-        return 'border-l-gray-500 bg-gray-50';
-    }
-  };
+  if (error) {
+    return (
+      <div className="text-red-500 p-4">
+        <p>{error}</p>
+        <button 
+          onClick={handleRetry}
+          className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className={`bg-white rounded-lg shadow-md ${className}`}>
-      <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-800">Alerts</h2>
-        <div className="flex space-x-2">
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value as 'all' | 'unread' | 'critical')}
-            className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+    <div className="bg-white rounded-lg shadow p-6">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-lg font-semibold text-gray-800">Recent Alerts</h2>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={handlePrevPage}
+            disabled={page === 1}
+            className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-50"
           >
-            <option value="all">All Alerts</option>
-            <option value="unread">Unread</option>
-            <option value="critical">Critical</option>
-          </select>
+            <ChevronLeft className="h-5 w-5 text-gray-600" />
+          </button>
+          <span className="text-sm text-gray-600">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            onClick={handleNextPage}
+            disabled={!hasMore}
+            className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-50"
+          >
+            <ChevronRight className="h-5 w-5 text-gray-600" />
+          </button>
+          <button
+            onClick={fetchAlerts}
+            disabled={refreshing}
+            className={`p-2 rounded-full hover:bg-gray-100 ${refreshing ? 'animate-spin' : ''}`}
+            title="Refresh alerts"
+          >
+            <RefreshCw className={`h-5 w-5 ${refreshing ? 'text-gray-400' : 'text-gray-600'}`} />
+          </button>
         </div>
       </div>
-
-      {groupedAlerts.length === 0 ? (
-        <div className="p-6 text-center text-gray-500">
-          <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p>No alerts to display.</p>
-        </div>
-      ) : (
-        <div className="divide-y divide-gray-200">
-          {groupedAlerts.map((group) => (
-            <div key={group.type} className="divide-y divide-gray-100">
-              <h3 className="p-3 bg-gray-50 text-sm font-medium text-gray-700">
-                {formatAlertType(group.type)}
-              </h3>
-              {group.alerts.map((alert) => (
-                <div
-                  key={alert.id}
-                  className={`p-4 border-l-4 ${getPriorityStyles(alert.priority)} ${
-                    alert.read ? 'opacity-70' : ''
-                  }`}
-                >
-                  <div className="flex items-start">
-                    <div className="flex-shrink-0">
-                      {getAlertIcon(alert.type)}
-                    </div>
-                    <div className="ml-3 flex-1">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium text-gray-900">{alert.message}</p>
-                        <span className="text-xs text-gray-500">{formatTimestamp(alert.timestamp)}</span>
-                      </div>
-                      {showPatientInfo && alert.patientName && (
-                        <div className="mt-1 flex items-center">
-                          <User className="h-4 w-4 text-gray-400" />
-                          <span className="ml-1 text-sm text-gray-500">{alert.patientName}</span>
-                        </div>
-                      )}
-                      {alert.medicationName && (
-                        <div className="mt-1 flex items-center">
-                          <PillIcon className="h-4 w-4 text-gray-400" />
-                          <span className="ml-1 text-sm text-gray-500">{alert.medicationName}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  {onAlertAction && (
-                    <div className="mt-3 flex justify-end space-x-3">
-                      {!alert.read && (
-                        <button
-                          onClick={() => onAlertAction(alert.id, 'acknowledge')}
-                          className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
-                        >
-                          <Check className="h-4 w-4 mr-1" />
-                          Acknowledge
-                        </button>
-                      )}
-                      <button
-                        onClick={() => onAlertAction(alert.id, 'dismiss')}
-                        className="text-sm text-gray-600 hover:text-gray-800 flex items-center"
-                      >
-                        <X className="h-4 w-4 mr-1" />
-                        Dismiss
-                      </button>
-                      {alert.priority === 'critical' && (
-                        <button
-                          onClick={() => onAlertAction(alert.id, 'emergency')}
-                          className="text-sm text-red-600 hover:text-red-800 flex items-center"
-                        >
-                          <AlertCircle className="h-4 w-4 mr-1" />
-                          Emergency Contact
-                        </button>
-                      )}
-                    </div>
-                  )}
+      <div className="space-y-4">
+        {alerts.map((alert) => (
+          <div
+            key={alert.id}
+            className={`p-4 ${getPriorityColor(alert.priority)} border-l-4 ${
+              alert.priority === "high"
+                ? "border-red-500"
+                : alert.priority === "medium"
+                ? "border-orange-500"
+                : "border-yellow-500"
+            } rounded-r`}
+          >
+            <div className="flex items-start">
+              <div className="flex-shrink-0">{getAlertIcon(alert.type)}</div>
+              <div className="ml-3">
+                <p className="text-sm font-medium text-gray-900">{alert.message}</p>
+                <span className="text-xs text-gray-500">{alert.time}</span>
+                <div className="mt-1">
+                  <span className="text-xs text-gray-500">Patient ID: </span>
+                  <span className="ml-1 text-sm text-gray-500">{alert.patient}</span>
                 </div>
-              ))}
+              </div>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

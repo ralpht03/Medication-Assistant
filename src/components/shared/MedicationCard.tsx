@@ -48,9 +48,36 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
   };
   
   // Function to handle successful medication taking
-  const handleMedicationTaken = () => {
-    if (onTake) onTake();
-    setShowCameraModal(false);
+  const handleMedicationTaken = async (data: {
+    medicationId: string;
+    patientId: string;
+    pillCount: string;
+    recommendedPillCount: string;
+    status: 'taken' | 'missed' | 'skipped';
+    notes?: string;
+    bypassVerification?: boolean;
+  }) => {
+    try {
+      // Make API call to record the verification
+      const response = await fetch('/api/adherence', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to record medication verification');
+      }
+
+      // Call onTake callback after successful API call
+      if (onTake) onTake();
+      setShowCameraModal(false);
+    } catch (error) {
+      console.error('Error recording medication verification:', error);
+      showAlert('Failed to record medication verification. Please try again.');
+    }
   };
 
   return (
@@ -90,10 +117,10 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
         medication={{
           id: medication.id || medication.RowKey, // Use id if available, fallback to RowKey
           name: medication.name,
-          dosage: medication.dosage,
-          patientId: medication.patientId || medication.PartitionKey // Use patientId if available, fallback to PartitionKey
+          recommendedPillCount: medication.recommendedPillCount,
+          patientId: medication.patientId 
         }}
-        onTakeMedication={handleMedicationTaken}
+        onVerificationComplete={handleMedicationTaken}
       />
       
       {/* Alert Message */}

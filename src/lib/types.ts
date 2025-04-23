@@ -1,19 +1,5 @@
-export interface Adherence {
-  PartitionKey: string
-  RowKey: string
-  Timestamp: string
-  patientId: string
-  adherencePercentage: string
-  dailyAdherence: string
-  pillCount?: string
-  recommendedCount?: string
-  isCorrectDose?: string
-  bypassVerification?: string
-  notes?: string
-}
-
 export interface Alerts {
-  PartitionKey: string
+  PartitionKey: string // patientId
   RowKey: string
   Timestamp: string
   userId: string
@@ -40,6 +26,7 @@ export interface Medications {
   notes: string
   refillsRemaining: string
   lastFilledDate: string
+  recommendedPillCount: string
 }
 
 export interface Patients {
@@ -84,18 +71,18 @@ export interface Users {
 }
 
 export interface VerificationLogs {
-  PartitionKey: string
-  RowKey: string
-  Timestamp: string
-  patientId: string
-  method: string
-  verified: boolean
-  verificationData: string
-  imageUrl: string
-  pillImageUrl: string
-  helperId: string
-  patientConfirmation: boolean
-  helperConfirmation: boolean
+  PartitionKey: string;    // patientId
+  RowKey: string;         // timestamp
+  Timestamp: string;      // Azure timestamp
+  medicationName: string;
+  medicationId: string;   // Link to medication
+  pillCount: string;      // Actual pills taken
+  recommendedPillCount: string; // Recommended dosage
+  timeTaken: string;      // When medication was taken
+  status: 'taken' | 'missed' | 'skipped';
+  notes: string;          // Any additional notes
+  verificationMethod: 'camera' | 'manual' | 'helper'; // How it was verified
+  isCorrectDose: boolean; // Whether pillCount matches recommendedCount
 }
 
 export interface DashboardMedication extends Medications {
@@ -159,8 +146,10 @@ export interface Medication {
   prescribingDoctor?: string; // Prescribing doctor
   pharmacy?: string; // Pharmacy
   notes?: string; // Notes
-  refillsRemaining?: number; // Refills remaining
+  refillsRemaining?: string; // Refills remaining
   lastFilled?: string; // Last filled date
+  patientId?: string; // Patient ID
+  recommendedPillCount?: string; // Recommended pill count
 }
 
 export interface Prescription {
@@ -172,18 +161,6 @@ export interface Prescription {
   endDate: string;
   instructions: string;
   status: 'active' | 'completed' | 'cancelled';
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface AdherenceRecord {
-  id: string;
-  prescriptionId: string;
-  patientId: string;
-  medicationId: string;
-  takenAt: string;
-  status: 'taken' | 'missed' | 'delayed';
-  notes?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -217,7 +194,6 @@ export interface AuthResult {
 }
 
 export interface DatabaseSchema {
-  Adherence: Adherence[]
   Alerts: Alerts[]
   Medications: Medications[]
   Patients: Patients[]
@@ -227,5 +203,4 @@ export interface DatabaseSchema {
   users: User[];
   medications: Medication[];
   prescriptions: Prescription[];
-  adherenceRecords: AdherenceRecord[];
 }
