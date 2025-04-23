@@ -47,7 +47,7 @@ export default function LoginPage() {
           targetPath = "/admin/dashboard";
           break;
         case "helper":
-          targetPath = "/helper/dashboard";
+          targetPath = "/helper/landing";
           break;
         default:
           targetPath = "/patient/dashboard";

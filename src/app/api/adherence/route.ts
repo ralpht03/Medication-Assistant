@@ -252,7 +252,7 @@ export async function POST(req: Request) {
         alerts.push(bypassAlert);
       }
       
-      // If overdose or underdose, create an alert
+      // If overdose or underdose, create alerts for both patient and admin
       if (isOverdose || isUnderdose) {
         const alertType = isOverdose ? 'overdose' : 'underdose';
         const alertMessage = isOverdose

@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { TableClient, odata } from '@azure/data-tables';
+import { getSession } from '@/lib/auth';
 
 // Initialize TableClient for Users table
 function createTableClient(tableName: string): TableClient {
@@ -22,56 +23,44 @@ function createTableClient(tableName: string): TableClient {
 const usersTableClient = createTableClient('Users');
 const medicationsTableClient = createTableClient('medications');
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const adminId = searchParams.get('adminId');
-
-    if (!adminId) {
-      return NextResponse.json({ error: 'Admin ID is required' }, { status: 400 });
+    // Get authenticated user using the centralized getSession
+    const session = await getSession(request);
+    if (!session || !session.user || session.user.role !== 'helper') {
+      return NextResponse.json(
+        { message: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    console.log('Fetching admin user with ID:', adminId);
+    const helperEmail = session.user.email;
     
-    // Get the admin user using the correct partition key
-    const adminFilter = odata`PartitionKey eq 'admin' and RowKey eq ${adminId}`;
-    let adminUser = null;
+    // First, get the helper's ID using their email
+    const helperFilter = odata`PartitionKey eq 'helper' and email eq ${helperEmail}`;
+    let helperUser = null;
     
     try {
-      const adminEntities = usersTableClient.listEntities({ queryOptions: { filter: adminFilter } });
+      const helperEntities = usersTableClient.listEntities({ queryOptions: { filter: helperFilter } });
       
-      for await (const entity of adminEntities) {
-        adminUser = entity;
-        console.log('Found admin user:', {
-          partitionKey: entity.partitionKey,
-          rowKey: entity.rowKey,
-          role: entity.role,
-          email: entity.email
-        });
+      for await (const entity of helperEntities) {
+        helperUser = entity;
         break;
       }
     } catch (error) {
-      console.error('Error finding admin user:', error);
-      return NextResponse.json({ error: 'Failed to find admin user' }, { status: 404 });
+      console.error('Error finding helper user:', error);
+      return NextResponse.json({ error: 'Failed to find helper user' }, { status: 404 });
     }
     
-    if (!adminUser) {
-      return NextResponse.json({ error: 'Admin user not found' }, { status: 404 });
-    }
-
-    // Check if the user is an admin
-    const role = adminUser.role?.toString().toLowerCase() || '';
-    const type = adminUser.type?.toString().toLowerCase() || '';
-    
-    if (!role.includes('admin') && !type.includes('admin')) {
-      return NextResponse.json({ error: 'User is not an admin' }, { status: 403 });
+    if (!helperUser) {
+      return NextResponse.json({ error: 'Helper user not found' }, { status: 404 });
     }
 
     // Get the linkedPatients array
     let linkedPatients: string[] = [];
-    if (adminUser.linkedPatients) {
+    if (helperUser.linkedPatients) {
       try {
-        linkedPatients = JSON.parse(adminUser.linkedPatients as string);
+        linkedPatients = JSON.parse(helperUser.linkedPatients as string);
         console.log('Successfully parsed linkedPatients:', linkedPatients);
       } catch (error) {
         console.error('Error parsing linkedPatients:', error);
@@ -121,30 +110,26 @@ export async function GET(request: Request) {
         console.error(`Error fetching medications for patient ${patientId}:`, error);
       }
 
-      // Calculate adherence rate and status
+      // Calculate adherence rate
       const adherenceRate = calculateAdherenceRate(medications);
-      const status = determineStatus(medications);
 
       patients.push({
         id: patientUser.rowKey,
         name: `${patientUser.firstName} ${patientUser.lastName}`,
         email: patientUser.email,
-        lastMedication: getLastMedicationTime(medications),
-        nextScheduled: getNextScheduledTime(medications),
-        adherenceRate,
-        status,
-        medicationCount: medications.length
+        adherencePercentage: adherenceRate,
+        profilePictureUrl: patientUser.profilePictureUrl
       });
     }
 
     return NextResponse.json({ patients });
   } catch (error) {
-    console.error('Error in GET /api/admin/patients:', error);
+    console.error('Error in GET /api/helper/patients:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-// Helper functions
+// Helper function to calculate adherence rate
 function calculateAdherenceRate(medications: any[]): number {
   if (medications.length === 0) return 0;
   
@@ -152,44 +137,4 @@ function calculateAdherenceRate(medications: any[]): number {
   const totalScheduled = medications.reduce((sum, med) => sum + (med.dosesScheduled || 0), 0);
   
   return totalScheduled > 0 ? Math.round((totalDoses / totalScheduled) * 100) : 0;
-}
-
-function determineStatus(medications: any[]): 'normal' | 'missed' | 'overdose' {
-  if (medications.length === 0) return 'normal';
-  
-  const now = new Date();
-  const hasMissedDose = medications.some(med => {
-    const nextDose = new Date(med.nextDoseTime);
-    return nextDose < now && !med.lastTaken;
-  });
-  
-  const hasOverdose = medications.some(med => med.dosesTaken > med.dosesScheduled);
-  
-  if (hasOverdose) return 'overdose';
-  if (hasMissedDose) return 'missed';
-  return 'normal';
-}
-
-function getLastMedicationTime(medications: any[]): string {
-  if (medications.length === 0) return 'Never';
-  
-  const lastTaken = medications.reduce((latest, med) => {
-    if (!med.lastTaken) return latest;
-    const takenTime = new Date(med.lastTaken);
-    return takenTime > latest ? takenTime : latest;
-  }, new Date(0));
-  
-  return lastTaken.getTime() === 0 ? 'Never' : lastTaken.toLocaleString();
-}
-
-function getNextScheduledTime(medications: any[]): string {
-  if (medications.length === 0) return 'No medications';
-  
-  const nextDose = medications.reduce((earliest, med) => {
-    if (!med.nextDoseTime) return earliest;
-    const doseTime = new Date(med.nextDoseTime);
-    return doseTime < earliest ? doseTime : earliest;
-  }, new Date(8640000000000000)); // Far future date
-  
-  return nextDose.getTime() === 8640000000000000 ? 'No medications' : nextDose.toLocaleString();
-}
+} 
