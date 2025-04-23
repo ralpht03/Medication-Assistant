@@ -93,6 +93,7 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
       </div>
       <p className="text-sm text-gray-600">{medication.dosage}</p>
       <p className="text-sm text-gray-600">Scheduled Time: {medication.time}</p>
+      <p className="text-sm text-gray-600">Recommended Dose: {medication.recommendedPillCount || 1} pill(s)</p>
 
       {showActions && (
         <div className="mt-4 flex space-x-2">

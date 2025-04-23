@@ -31,6 +31,7 @@ const MedicationAssignmentModal = ({
   const [pharmacy, setPharmacy] = useState("")
   const [notes, setNotes] = useState("")
   const [refillsRemaining, setRefillsRemaining] = useState<string>("0")
+  const [recommendedPillCount, setRecommendedPillCount] = useState<string>("1")
   const [timeOfDay, setTimeOfDay] = useState<string[]>([])
 
   // UI state
@@ -65,6 +66,15 @@ const MedicationAssignmentModal = ({
     }
   };
 
+  // Update the recommended pill count input handler
+  const handleRecommendedPillCountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    // Only allow numeric input
+    if (/^\d*$/.test(value)) {
+      setRecommendedPillCount(value);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -73,7 +83,7 @@ const MedicationAssignmentModal = ({
       setError(null)
 
       // Validate required fields
-      if (!name || !dosage || !frequency || !startDate || !endDate || !verificationMethod || timeOfDay.length === 0) {
+      if (!name || !dosage || !frequency || !startDate || !endDate || !verificationMethod || !recommendedPillCount || timeOfDay.length === 0) {
         throw new Error("Please fill in all required fields")
       }
 
@@ -95,6 +105,7 @@ const MedicationAssignmentModal = ({
         pharmacy: pharmacy || undefined,
         notes: notes || undefined,
         refillsRemaining: refillsRemaining || 0,
+        recommendedPillCount: recommendedPillCount || "1",
         lastFilled: startDate // Initially set lastFilled to startDate
       }
 
@@ -295,6 +306,23 @@ const MedicationAssignmentModal = ({
                     value={refillsRemaining}
                     onChange={handleRefillsChange}
                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  />
+                </div>
+
+                {/* Recommended Pill Count */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="recommended-pill-count">
+                    Recommended Pill Count*
+                  </label>
+                  <input
+                    id="recommended-pill-count"
+                    type="text"
+                    pattern="\d*"
+                    value={recommendedPillCount}
+                    onChange={handleRecommendedPillCountChange}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    placeholder="e.g., 1"
+                    required
                   />
                 </div>
 

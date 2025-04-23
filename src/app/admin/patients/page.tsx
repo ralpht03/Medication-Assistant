@@ -35,9 +35,17 @@ export default function AdminPatientsPage() {
       }
 
       const user = JSON.parse(userStr);
-      const adminId = user.id || user.rowKey;
+      if (!user || typeof user !== 'object') {
+        throw new Error('Invalid user data in localStorage');
+      }
 
-      const response = await fetch(`/api/admin/patients?adminId=${adminId}`);
+      // Ensure we have a valid ID
+      const adminId = user.rowKey || user.id;
+      if (!adminId || typeof adminId !== 'string') {
+        throw new Error('Invalid admin ID');
+      }
+
+      const response = await fetch(`/api/admin/patients?adminId=${encodeURIComponent(adminId)}`);
       const data = await response.json();
 
       if (!response.ok) {

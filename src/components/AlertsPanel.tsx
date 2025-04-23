@@ -128,8 +128,7 @@ const AlertsPanel = () => {
     }
   };
 
-  // Get alert icon based on type
-  const getAlertIcon = (type: string) => {
+  const getAlertIcon = (type: Alert["type"]) => {
     switch (type) {
       case "overdose":
         return <AlertCircle className="h-5 w-5 text-red-500" />;

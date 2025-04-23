@@ -1,14 +1,23 @@
 import PageLayout from '@/components/PageLayout';
+import AvailableHelpersList from '@/components/AvailableHelpersList';
 import PatientInvitationsList from '@/components/PatientInvitationsList';
 
 export default function PatientInvitationsPage() {
   return (
-    <PageLayout userType="patient" title="Admin Invitations">
+    <PageLayout userType="patient" title="Manage Helper Invitations">
       <p className="text-gray-600 mb-6">
-        View and respond to invitations from administrators who want to help manage your medications.
+        Invite helpers to assist you with managing your medications. Track and manage your sent invitations.
       </p>
       
-      <PatientInvitationsList />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div>
+          <AvailableHelpersList />
+        </div>
+        
+        <div>
+          <PatientInvitationsList />
+        </div>
+      </div>
     </PageLayout>
   );
 }
