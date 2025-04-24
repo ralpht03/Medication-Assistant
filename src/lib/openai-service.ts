@@ -132,26 +132,33 @@ Your response should be clear, helpful, and written in a conversational but prof
   }
 
   async checkInteractions(medications: Medication[]): Promise<string> {
-    const medicationDetails = medications.map(med => 
+    // Format all medications for the prompt
+    const medicationDetails = medications.map(med =>
       `- ${med.name} (${med.dosage}, ${med.frequency})`
     ).join("\n");
 
-    const prompt = `
-# Medication Interaction Analysis
+    // Count the number of medications to emphasize comprehensive analysis
+    const medicationCount = medications.length;
 
-## Current Medications
+    const prompt = `
+# Comprehensive Medication Interaction Analysis
+
+## All Current Medications (${medicationCount} total)
 ${medicationDetails}
 
 ## Potential Interactions
-[Analyze and list any potential interactions between these medications]
+[Perform a thorough analysis of ALL possible interactions between ANY of these ${medicationCount} medications. Consider both direct interactions between pairs of medications and any complex interactions involving multiple medications.]
+
+## Severity Classification
+[Classify any identified interactions by severity (mild, moderate, severe) and explain what each level means for the patient]
 
 ## Recommendations
-[Provide specific advice about managing these medications together]
+[Provide specific advice about safely managing these medications together, including any timing adjustments that might reduce interaction risks]
 
 ## Important Notes
-[Include any special precautions or timing considerations]
+[Include any special precautions, monitoring needs, or symptoms that might indicate an adverse interaction]
 
-Please analyze these medications for potential interactions and provide clear, actionable advice using markdown formatting.`;
+Please analyze ALL of these medications together for ANY potential interactions and provide clear, actionable advice using markdown formatting. Consider both common and rare interactions, and explain the practical implications for the patient.`;
     return this.getCompletion(prompt);
   }
 
