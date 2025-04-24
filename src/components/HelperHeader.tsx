@@ -3,13 +3,13 @@
 import { useState, useEffect } from 'react'
 import Image from "next/image"
 import Link from "next/link"
-import { Bell, ChevronDown, User, Settings, LogOut, Users } from "lucide-react"
+import { Bell, ChevronDown, User, Settings, LogOut } from "lucide-react"
 
-interface AdminHeaderProps {
+interface HelperHeaderProps {
   unreadNotifications?: number
 }
 
-const AdminHeader = ({ unreadNotifications = 0 }: AdminHeaderProps) => {
+const HelperHeader = ({ unreadNotifications = 0 }: HelperHeaderProps) => {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [userName, setUserName] = useState('')
 
@@ -37,7 +37,7 @@ const AdminHeader = ({ unreadNotifications = 0 }: AdminHeaderProps) => {
           </div>
           <div className="flex items-center">
             <Link
-              href="/admin/alerts"
+              href="/helper/alerts"
               className="relative mr-4 text-gray-500 hover:text-gray-700 focus:outline-none"
             >
               <Bell className="h-6 w-6" />
@@ -57,39 +57,26 @@ const AdminHeader = ({ unreadNotifications = 0 }: AdminHeaderProps) => {
                 <ChevronDown className="h-4 w-4" />
               </button>
               {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
-                  <Link
-                    href="/admin/profile"
-                    className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                  >
-                    <User className="h-4 w-4 mr-2" />
-                    Profile
-                  </Link>
-                  <Link
-                    href="/admin/patients"
-                    className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                  >
-                    <Users className="h-4 w-4 mr-2" />
-                    Manage Patients
-                  </Link>
-                  <Link
-                    href="/admin/settings"
-                    className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                  >
-                    <Settings className="h-4 w-4 mr-2" />
-                    Settings
-                  </Link>
-                  <button
-                    onClick={() => {
-                      localStorage.removeItem('user')
-                      localStorage.removeItem('token')
-                      window.location.href = '/login'
-                    }}
-                    className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                  >
-                    <LogOut className="h-4 w-4 mr-2" />
-                    Logout
-                  </button>
+                <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5">
+                  <div className="py-1">
+                    <Link
+                      href="/helper/settings"
+                      className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      <Settings className="h-4 w-4 mr-2" />
+                      Settings
+                    </Link>
+                    <button
+                      onClick={() => {
+                        localStorage.removeItem('user')
+                        window.location.href = '/login'
+                      }}
+                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Sign out
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -100,4 +87,4 @@ const AdminHeader = ({ unreadNotifications = 0 }: AdminHeaderProps) => {
   )
 }
 
-export default AdminHeader
+export default HelperHeader 

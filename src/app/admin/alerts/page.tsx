@@ -11,9 +11,17 @@ interface AlertFilters {
   read?: boolean
 }
 
-interface AlertWithPatientInfo extends Alerts {
+interface AlertWithPatientInfo {
+  id: string;
+  type: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  priority: string;
+  medicationId: string;
+  medicationName: string;
+  patientId: string;
   patientName: string;
-  patientEmail: string;
 }
 
 export default function AdminAlertsPage() {
@@ -35,25 +43,26 @@ export default function AdminAlertsPage() {
       }
 
       const queryParams = new URLSearchParams()
-      queryParams.append('adminId', user.id)
-      if (filters.priority) queryParams.append('priority', filters.priority)
+      queryParams.append('userId', user.id)
+      queryParams.append('role', 'admin')
+      if (filters.priority) queryParams.append('type', filters.priority)
       if (filters.type) queryParams.append('type', filters.type)
-      if (filters.read !== undefined) queryParams.append('read', String(filters.read))
+      if (filters.read !== undefined) queryParams.append('status', filters.read ? 'read' : 'unread')
 
-      const response = await fetch(`/api/notifications?${queryParams.toString()}`)
+      const response = await fetch(`/api/alerts?${queryParams.toString()}`)
       const data = await response.json()
       
       if (!response.ok) {
         throw new Error(data.error || 'Unable to load alerts. Please try again later.')
       }
       
-      if (!data.data || data.data.length === 0) {
+      if (!data || data.length === 0) {
         setAlerts([])
         setError(null)
         return
       }
       
-      setAlerts(data.data)
+      setAlerts(data)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load alerts. Please try again later.')
@@ -63,12 +72,17 @@ export default function AdminAlertsPage() {
     }
   }
 
-  const markAsRead = async (alertId: string, userId: string) => {
+  const markAsRead = async (alertId: string) => {
     try {
-      const response = await fetch('/api/notifications', {
+      const user = JSON.parse(localStorage.getItem('user') || 'null')
+      if (!user?.id) {
+        throw new Error('User not found')
+      }
+
+      const response = await fetch('/api/alerts', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, alertId })
+        body: JSON.stringify({ userId: user.id, alertId })
       })
       
       if (!response.ok) throw new Error('Failed to mark alert as read')
@@ -78,28 +92,29 @@ export default function AdminAlertsPage() {
     }
   }
 
-  const deleteAlert = async (alertId: string, partitionKey: string) => {
+  const deleteAlert = async (alertId: string) => {
     try {
-      const response = await fetch(`/api/notifications?partitionKey=${encodeURIComponent(partitionKey)}&rowKey=${encodeURIComponent(alertId)}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete alert');
+      const user = JSON.parse(localStorage.getItem('user') || 'null')
+      if (!user?.id) {
+        throw new Error('User not found')
       }
 
-      // Update local state by filtering out the deleted alert
-      setAlerts(prevAlerts => prevAlerts.filter(alert => alert.RowKey !== alertId));
-      setError(null); // Clear any previous errors
+      const response = await fetch(`/api/alerts?userId=${user.id}&alertId=${alertId}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to delete alert')
+      }
+
+      setAlerts(prevAlerts => prevAlerts.filter(alert => alert.id !== alertId))
+      setError(null)
     } catch (err) {
-      console.error('Error deleting alert:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete alert');
+      console.error('Error deleting alert:', err)
+      setError(err instanceof Error ? err.message : 'Failed to delete alert')
     }
-  };
+  }
 
   useEffect(() => {
     fetchAlerts()
@@ -195,7 +210,7 @@ export default function AdminAlertsPage() {
           <ul className="divide-y divide-gray-200">
             {alerts.map((alert) => (
               <li 
-                key={`${alert.PartitionKey}-${alert.RowKey}-${alert.Timestamp}`} 
+                key={`${alert.patientId}-${alert.id}-${alert.timestamp}`} 
                 className="p-4 hover:bg-gray-50"
               >
                 <div className="flex items-center justify-between">
@@ -204,17 +219,17 @@ export default function AdminAlertsPage() {
                     <div className="ml-4">
                       <p className="text-sm font-medium text-gray-900">{alert.message}</p>
                       <p className="text-sm text-gray-500">
-                        {alert.patientName} • {alert.patientEmail}
+                        {alert.patientName}
                       </p>
                       <p className="text-xs text-gray-400">
-                        {new Date(alert.Timestamp).toLocaleString()}
+                        {new Date(alert.timestamp).toLocaleString()}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
                     {!alert.read && (
                       <button
-                        onClick={() => markAsRead(alert.RowKey, alert.PartitionKey)}
+                        onClick={() => markAsRead(alert.id)}
                         className="p-2 text-green-600 hover:text-green-800"
                         title="Mark as read"
                       >
@@ -222,7 +237,7 @@ export default function AdminAlertsPage() {
                       </button>
                     )}
                     <button
-                      onClick={() => deleteAlert(alert.RowKey, alert.PartitionKey)}
+                      onClick={() => deleteAlert(alert.id)}
                       className="p-2 text-red-600 hover:text-red-800"
                       title="Delete alert"
                     >
