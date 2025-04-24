@@ -1,19 +1,9 @@
-import { Check, Clock, X, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { useState } from "react";
 import { Medications } from '@/lib/types';
 import CameraModal from '@/components/CameraModal';
 
 export type MedicationStatus = 'taken' | 'missed' | 'upcoming';
-
-const statusConfig: Record<MedicationStatus, {
-  icon: any; // Or proper Lucide icon type
-  className: string;
-  text: string;
-}> = {
-  taken: { icon: Check, className: "bg-green-100 text-green-800", text: "Taken" },
-  missed: { icon: X, className: "bg-red-100 text-red-800", text: "Missed" },
-  upcoming: { icon: Clock, className: "bg-yellow-100 text-yellow-800", text: "Upcoming" }
-};
 
 interface MedicationCardProps {
   medication: Medications & {
@@ -27,7 +17,6 @@ interface MedicationCardProps {
 }
 
 const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: MedicationCardProps) => {
-  const StatusIcon = statusConfig[medication.status].icon;
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [alert, setAlert] = useState<string | null>(null);
 
@@ -85,10 +74,6 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <h3 className="text-lg font-medium">{medication.name}</h3>
-          <span className={`px-2 py-1 text-sm rounded ${statusConfig[medication.status].className}`}>
-            <StatusIcon className="w-4 h-4 inline-block mr-1" />
-            {statusConfig[medication.status].text}
-          </span>
         </div>
       </div>
       <p className="text-sm text-gray-600">{medication.dosage}</p>
