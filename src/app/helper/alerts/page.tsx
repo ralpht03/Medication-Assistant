@@ -11,15 +11,17 @@ interface AlertFilters {
   read?: boolean
 }
 
-interface AlertWithPatientInfo extends Alerts {
-  rowKey: string
-  patientName: string
-  patientEmail: string
-  message: string
-  type: string
-  priority: string
-  read: boolean
-  timestamp: string
+interface AlertWithPatientInfo {
+  id: string;
+  type: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  priority: string;
+  medicationId: string;
+  medicationName: string;
+  patientId: string;
+  patientName: string;
 }
 
 export default function HelperAlertsPage() {
@@ -45,14 +47,15 @@ export default function HelperAlertsPage() {
       const helperId = user.id || user.rowKey
 
       const params = new URLSearchParams({
-        helperId: helperId
+        userId: helperId,
+        role: 'helper'
       })
 
-      if (filters.priority) params.append('priority', filters.priority)
+      if (filters.priority) params.append('type', filters.priority)
       if (filters.type) params.append('type', filters.type)
-      if (filters.read !== undefined) params.append('read', String(filters.read))
+      if (filters.read !== undefined) params.append('status', filters.read ? 'read' : 'unread')
 
-      const response = await fetch(`/api/notifications?${params.toString()}`)
+      const response = await fetch(`/api/alerts?${params.toString()}`)
       if (!response.ok) {
         throw new Error('Failed to fetch alerts')
       }
@@ -74,13 +77,13 @@ export default function HelperAlertsPage() {
       }
 
       const user = JSON.parse(userStr)
-      const response = await fetch('/api/notifications', {
+      const response = await fetch('/api/alerts', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          helperId: user.id || user.rowKey,
+          userId: user.id || user.rowKey,
           alertId
         })
       })
@@ -90,7 +93,7 @@ export default function HelperAlertsPage() {
       }
 
       setAlerts(alerts.map(alert => 
-        alert.rowKey === alertId ? { ...alert, read: true } : alert
+        alert.id === alertId ? { ...alert, read: true } : alert
       ))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to mark alert as read')
@@ -105,7 +108,7 @@ export default function HelperAlertsPage() {
       }
 
       const user = JSON.parse(userStr)
-      const response = await fetch(`/api/notifications?helperId=${user.id || user.rowKey}&alertId=${alertId}`, {
+      const response = await fetch(`/api/alerts?userId=${user.id || user.rowKey}&alertId=${alertId}`, {
         method: 'DELETE'
       })
 
@@ -113,7 +116,7 @@ export default function HelperAlertsPage() {
         throw new Error('Failed to delete alert')
       }
 
-      setAlerts(alerts.filter(alert => alert.rowKey !== alertId))
+      setAlerts(alerts.filter(alert => alert.id !== alertId))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete alert')
     }
@@ -221,7 +224,7 @@ export default function HelperAlertsPage() {
         <div className="space-y-4">
           {alerts.map((alert) => (
             <div
-              key={alert.rowKey}
+              key={alert.id}
               className={`p-4 bg-white rounded-lg shadow ${
                 alert.read ? 'border-l-4 border-gray-300' : 'border-l-4 border-blue-500'
               }`}
@@ -242,7 +245,7 @@ export default function HelperAlertsPage() {
                 <div className="flex space-x-2">
                   {!alert.read && (
                     <button
-                      onClick={() => markAsRead(alert.rowKey)}
+                      onClick={() => markAsRead(alert.id)}
                       className="p-2 text-gray-400 hover:text-green-600"
                       title="Mark as read"
                     >
@@ -250,7 +253,7 @@ export default function HelperAlertsPage() {
                     </button>
                   )}
                   <button
-                    onClick={() => deleteAlert(alert.rowKey)}
+                    onClick={() => deleteAlert(alert.id)}
                     className="p-2 text-gray-400 hover:text-red-600"
                     title="Delete alert"
                   >

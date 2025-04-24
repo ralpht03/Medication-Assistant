@@ -41,18 +41,18 @@ export async function GET(request: Request) {
     let alerts = [];
     
     // Get user's linked patients/admins based on role
-    const user = await usersTable.getEntity('USER', userId);
+    const user = await usersTable.getEntity(role, userId);
     let linkedIds: string[] = [];
     
     if (role === 'admin') {
       // Admin gets alerts for their linked patients
       if (user.linkedPatients) {
-        linkedIds = JSON.parse(user.linkedPatients);
+        linkedIds = JSON.parse(user.linkedPatients as string);
       }
     } else if (role === 'helper') {
       // Helper gets alerts for their linked patients
       if (user.linkedPatients) {
-        linkedIds = JSON.parse(user.linkedPatients);
+        linkedIds = JSON.parse(user.linkedPatients as string);
       }
     } else if (role === 'patient') {
       // Patient gets their own alerts
@@ -86,7 +86,7 @@ export async function GET(request: Request) {
       // Get patient info for the alert
       let patientName = 'Unknown';
       try {
-        const patient = await usersTable.getEntity('USER', entity.partitionKey);
+        const patient = await usersTable.getEntity('USER', entity.partitionKey as string);
         patientName = `${patient.firstName} ${patient.lastName}`;
       } catch (error) {
         console.error('Error fetching patient info:', error);
@@ -112,7 +112,7 @@ export async function GET(request: Request) {
 
     // Sort alerts by timestamp, newest first
     alerts.sort((a, b) =>
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      new Date(b.timestamp as string).getTime() - new Date(a.timestamp as string).getTime()
     );
 
     return NextResponse.json(alerts);

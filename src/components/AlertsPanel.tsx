@@ -24,12 +24,12 @@ const AlertsPanel = () => {
   const isMounted = useRef(true);
   const timeoutId = useRef<NodeJS.Timeout | undefined>(undefined);
 
-  const processAlertData = (data: Alerts[]): Alert[] => {
-    return data.map((alert: Alerts) => ({
+  const processAlertData = (data: any[]): Alert[] => {
+    return data.map((alert: any) => ({
       ...alert,
-      id: alert.RowKey,
-      time: new Date(alert.Timestamp).toLocaleTimeString(),
-      patient: alert.PartitionKey
+      id: alert.id,
+      time: new Date(alert.timestamp).toLocaleTimeString(),
+      patient: alert.patientId
     }));
   };
 
@@ -50,16 +50,12 @@ const AlertsPanel = () => {
       const role = user.role;
 
       // Build query parameters based on user role
-      const params = new URLSearchParams();
-      if (role === 'admin') {
-        params.append('adminId', userId);
-      } else if (role === 'helper') {
-        params.append('helperId', userId);
-      } else if (role === 'patient') {
-        params.append('patientId', userId);
-      }
+      const params = new URLSearchParams({
+        userId,
+        role
+      });
 
-      const response = await fetch(`/api/notifications?${params.toString()}`);
+      const response = await fetch(`/api/alerts?${params.toString()}`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch alerts');
