@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import PageLayout from '@/components/PageLayout'
+import { useRouter } from 'next/navigation'
 
 interface Patient {
   id: string
@@ -12,6 +13,7 @@ interface Patient {
 }
 
 export default function HelperPatientsPage() {
+  const router = useRouter()
   const [patients, setPatients] = useState<Patient[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -45,6 +47,10 @@ export default function HelperPatientsPage() {
 
     fetchPatients()
   }, [])
+
+  const handlePatientClick = (patientId: string) => {
+    router.push(`/helper/patient/${patientId}`)
+  }
 
   return (
     <PageLayout userType="helper" title="My Patients">
@@ -86,7 +92,11 @@ export default function HelperPatientsPage() {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {patients.map((patient) => (
-                <tr key={patient.id}>
+                <tr 
+                  key={patient.id}
+                  onClick={() => handlePatientClick(patient.id)}
+                  className="cursor-pointer hover:bg-gray-50 transition-colors duration-150"
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{patient.name}</div>
                   </td>

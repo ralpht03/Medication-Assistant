@@ -30,7 +30,7 @@ export default function HelperDashboardPage() {
         // Fetch data from existing APIs
         const [patientsResponse, alertsResponse, invitationsResponse] = await Promise.all([
           fetch(`/api/helper/patients?helperId=${helperId}`),
-          fetch(`/api/helper/alerts?helperId=${helperId}&read=false`),
+          fetch(`/api/alerts?userId=${helperId}&role=helper&status=unread`),
           fetch(`/api/helper/invitations?helperId=${helperId}&accepted=false`)
         ])
 

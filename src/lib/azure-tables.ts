@@ -152,7 +152,7 @@ export class MedicationService {
 }
 
 // Helper function to create a TableClient
-function createTableClient(tableName: string): TableClient {
+export function createTableClient(tableName: string): TableClient {
   const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
   if (!connectionString) {
     throw new Error('Azure Storage connection string must be provided in the environment variables.');

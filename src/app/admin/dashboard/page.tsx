@@ -43,28 +43,31 @@ export default function AdminDashboard() {
       const user = JSON.parse(userStr);
       const adminId = user.id || user.rowKey;
 
-      // Fetch patients data to calculate stats
-      const response = await fetch(`/api/admin/patients?adminId=${adminId}`);
-      const data = await response.json();
+      // Fetch all required data in parallel
+      const [patientsResponse, alertsResponse] = await Promise.all([
+        fetch(`/api/admin/patients?adminId=${adminId}`),
+        fetch(`/api/alerts?userId=${adminId}&role=admin&status=unread`)
+      ]);
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch patient data');
+      if (!patientsResponse.ok || !alertsResponse.ok) {
+        throw new Error('Failed to fetch dashboard data');
       }
 
-      const patients = data.patients || [];
+      const [patientsData, alertsData] = await Promise.all([
+        patientsResponse.json(),
+        alertsResponse.json()
+      ]);
+
+      const patients = patientsData.patients || [];
+      const alerts = alertsData || [];
       
-      // Calculate dashboard stats from patient data
+      // Calculate dashboard stats
       const totalPatients = patients.length;
-      
-      // Count alerts across all patients
-      const pendingAlerts = patients.reduce((count: number, patient: any) => 
-        count + (patient.alerts?.length || 0), 0);
+      const pendingAlerts = alerts.length;
       
       // Count medications scheduled for today
       const today = new Date().toLocaleDateString();
       const todaySchedule = patients.reduce((count: number, patient: any) => {
-        // This is a simplified example - you would need to check actual medication schedules
-        // For now, we'll just count patients with medications
         return count + (patient.currentMedications?.length > 0 ? 1 : 0);
       }, 0);
       

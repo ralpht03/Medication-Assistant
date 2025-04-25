@@ -38,8 +38,6 @@ export async function GET(request: Request) {
     const alertsTable = createTableClient(ALERTS_TABLE);
     const usersTable = createTableClient('Users');
     
-    let alerts = [];
-    
     // Get user's linked patients/admins based on role
     const user = await usersTable.getEntity(role, userId);
     let linkedIds: string[] = [];
@@ -82,17 +80,40 @@ export async function GET(request: Request) {
     // Fetch alerts
     const alertEntities = alertsTable.listEntities({ queryOptions: { filter } });
     
+    // Collect all unique patient IDs and alerts
+    const patientIds = new Set<string>();
+    const rawAlerts: any[] = [];
+    
     for await (const entity of alertEntities) {
-      // Get patient info for the alert
-      let patientName = 'Unknown';
-      try {
-        const patient = await usersTable.getEntity('patient', entity.partitionKey as string);
-        patientName = `${patient.firstName} ${patient.lastName}`;
-      } catch (error) {
-        console.error('Error fetching patient info:', error);
+      patientIds.add(entity.partitionKey as string);
+      rawAlerts.push(entity);
+      
+      if (rawAlerts.length >= limit) {
+        break;
       }
+    }
 
-      alerts.push({
+    // Batch fetch patient info
+    const patientInfoMap = new Map<string, { firstName: string; lastName: string }>();
+    if (patientIds.size > 0) {
+      for (const patientId of patientIds) {
+        try {
+          const patient = await usersTable.getEntity('patient', patientId);
+          patientInfoMap.set(patientId, {
+            firstName: patient.firstName as string,
+            lastName: patient.lastName as string
+          });
+        } catch (error) {
+          console.error('Error fetching patient info:', error);
+          patientInfoMap.set(patientId, { firstName: 'Unknown', lastName: 'Patient' });
+        }
+      }
+    }
+
+    // Construct alerts with batched patient info
+    const processedAlerts = rawAlerts.map(entity => {
+      const patientInfo = patientInfoMap.get(entity.partitionKey as string) || { firstName: 'Unknown', lastName: 'Patient' };
+      return {
         id: entity.rowKey,
         type: entity.type,
         message: entity.message,
@@ -102,20 +123,16 @@ export async function GET(request: Request) {
         medicationId: entity.medicationId,
         medicationName: entity.medicationName,
         patientId: entity.partitionKey,
-        patientName
-      });
-
-      if (alerts.length >= limit) {
-        break;
-      }
-    }
+        patientName: `${patientInfo.firstName} ${patientInfo.lastName}`
+      };
+    });
 
     // Sort alerts by timestamp, newest first
-    alerts.sort((a, b) =>
+    processedAlerts.sort((a, b) =>
       new Date(b.timestamp as string).getTime() - new Date(a.timestamp as string).getTime()
     );
 
-    return NextResponse.json(alerts);
+    return NextResponse.json(processedAlerts);
   } catch (error) {
     console.error("Fetch alerts error:", error);
     return NextResponse.json(

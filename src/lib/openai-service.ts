@@ -102,9 +102,11 @@ export class OpenAIService {
     }
   }
 
-  async getMedicationInfo(medicationName: string): Promise<string> {
+  async getMedicationInfo(medication: Medication, isHelper: boolean = false): Promise<string> {
+    const context = isHelper ? "a helper assisting a patient" : "a patient";
+    const pronoun = isHelper ? "they" : "you";
     const prompt = `
-You are a helpful medical assistant providing information to a patient about ${medicationName}.
+You are a helpful medical assistant providing information to ${context} about ${medication.name}.
 
 Provide detailed information about this medication including:
 - A brief description of what the medication is and its primary uses
@@ -114,30 +116,31 @@ Provide detailed information about this medication including:
 - Critical information about storage, missed doses, or special precautions
 - Any lifestyle modifications needed
 
-Your response should be clear, helpful, and written in a conversational but professional tone. Format important points as bullet points where appropriate, but maintain a natural flow to your response.`;
+Your response should be clear, helpful, and written in a conversational but professional tone. Format important points as bullet points where appropriate, but maintain a natural flow to your response. Use "${pronoun}" when referring to the person taking the medication.`;
     return this.getCompletion(prompt);
   }
 
-  async getSideEffects(medicationName: string): Promise<string> {
+  async getSideEffects(medication: Medication, isHelper: boolean = false): Promise<string> {
+    const context = isHelper ? "a helper assisting a patient" : "a patient";
+    const pronoun = isHelper ? "they" : "you";
     const prompt = `
-You are a helpful medical assistant providing information to a patient about the side effects of ${medicationName}.
+You are a helpful medical assistant providing information to ${context} about the side effects of ${medication.name}.
 
 Provide information about:
 - The most common side effects and what to expect
 - Serious side effects that require immediate medical attention
 - Practical advice for managing common side effects
 
-Your response should be clear, helpful, and written in a conversational but professional tone. Format important points as bullet points where appropriate, but maintain a natural flow to your response.`;
+Your response should be clear, helpful, and written in a conversational but professional tone. Format important points as bullet points where appropriate, but maintain a natural flow to your response. Use "${pronoun}" when referring to the person taking the medication.`;
     return this.getCompletion(prompt);
   }
 
-  async checkInteractions(medications: Medication[]): Promise<string> {
-    // Format all medications for the prompt
+  async checkInteractions(medications: Medication[], isHelper: boolean = false): Promise<string> {
+    const context = isHelper ? "a helper assisting a patient" : "a patient";
+    const pronoun = isHelper ? "they" : "you";
     const medicationDetails = medications.map(med =>
       `- ${med.name} (${med.dosage}, ${med.frequency})`
     ).join("\n");
-
-    // Count the number of medications to emphasize comprehensive analysis
     const medicationCount = medications.length;
 
     const prompt = `
@@ -158,11 +161,13 @@ ${medicationDetails}
 ## Important Notes
 [Include any special precautions, monitoring needs, or symptoms that might indicate an adverse interaction]
 
-Please analyze ALL of these medications together for ANY potential interactions and provide clear, actionable advice using markdown formatting. Consider both common and rare interactions, and explain the practical implications for the patient.`;
+Please analyze ALL of these medications together for ANY potential interactions and provide clear, actionable advice using markdown formatting. Consider both common and rare interactions, and explain the practical implications for the patient. Use "${pronoun}" when referring to the person taking the medication.`;
     return this.getCompletion(prompt);
   }
 
-  async handleMissedDose(medication: Medication): Promise<string> {
+  async getMissedDoseGuidance(medication: Medication, isHelper: boolean = false): Promise<string> {
+    const context = isHelper ? "a helper assisting a patient" : "a patient";
+    const pronoun = isHelper ? "they" : "you";
     const prompt = `
 # Missed Dose Guidelines for ${medication.name}
 
@@ -177,11 +182,13 @@ Please analyze ALL of these medications together for ANY potential interactions 
 ## Warnings
 [Include what NOT to do, such as doubling up doses]
 
-Please provide clear, step-by-step guidance using markdown formatting.`;
+Please provide clear, step-by-step guidance using markdown formatting. Use "${pronoun}" when referring to the person taking the medication.`;
     return this.getCompletion(prompt);
   }
 
-  async handleEmergencyQuestion(question: string, medication: Medication): Promise<string> {
+  async getEmergencyGuidance(medication: Medication, question: string, isHelper: boolean = false): Promise<string> {
+    const context = isHelper ? "a helper assisting a patient" : "a patient";
+    const pronoun = isHelper ? "they" : "you";
     const prompt = `
 # Emergency Response: ${medication.name}
 
@@ -198,16 +205,18 @@ ${question}
 [Provide clear emergency guidance based on the question and medication details]
 
 ## Important Actions
-[List specific steps the patient should take]
+[Include immediate steps to take and when to seek emergency medical attention]
 
-Please provide clear, actionable emergency guidance using markdown formatting.`;
+Please provide clear, actionable guidance using markdown formatting. Use "${pronoun}" when referring to the person taking the medication.`;
     return this.getCompletion(prompt);
   }
 
-  async getDailySchedule(medications: Medication[]): Promise<string> {
-    const medicationDetails = medications
-      .map(med => `- ${med.name} (${med.dosage}) - ${med.frequency} - ${med.time}${med.instructions ? ` - ${med.instructions}` : ''}`)
-      .join("\n");
+  async getSchedule(medications: Medication[], isHelper: boolean = false): Promise<string> {
+    const context = isHelper ? "a helper assisting a patient" : "a patient";
+    const pronoun = isHelper ? "they" : "you";
+    const medicationDetails = medications.map(med =>
+      `- ${med.name} (${med.dosage}, ${med.frequency}, ${med.time})`
+    ).join("\n");
 
     const prompt = `
 # Daily Medication Schedule
@@ -215,53 +224,66 @@ Please provide clear, actionable emergency guidance using markdown formatting.`;
 ## Current Medications
 ${medicationDetails}
 
-## Schedule Breakdown
-[Organize medications by time of day in a clear schedule]
+## Schedule Overview
+[Provide a clear, organized schedule showing when each medication should be taken]
 
-## Special Instructions
-[Include any specific timing or administration instructions]
+## Important Notes
+[Include any special instructions about timing, food interactions, or other considerations]
 
-## Tips for Staying on Schedule
+## Tips for Success
 [Provide practical advice for maintaining the schedule]
 
-Please create a clear, organized daily schedule using markdown formatting with tables and bullet points as appropriate.`;
+Please provide a clear, easy-to-follow schedule using markdown formatting. Use "${pronoun}" when referring to the person taking the medication.`;
     return this.getCompletion(prompt);
   }
 
-  async getGeneralMedicalInfo(question: string): Promise<string> {
+  async getGeneralMedicalInfo(question: string, isHelper: boolean = false): Promise<string> {
+    const context = isHelper ? "a helper assisting a patient" : "a patient";
+    const pronoun = isHelper ? "they" : "you";
     const prompt = `
-You are a helpful medical assistant providing information to a patient. The patient has asked: "${question}"
+You are a helpful medical assistant providing information to ${context}.
 
-Provide a comprehensive, accurate answer to this medical question. Include relevant context and additional details that might be helpful. If appropriate, mention general medical guidelines or sources.
+Question: ${question}
 
-Remember to emphasize that this is general information and not personalized medical advice. Your response should be clear, helpful, and written in a conversational but professional tone.`;
+Please provide clear, accurate information in a conversational but professional tone. Use markdown formatting for better readability. Use "${pronoun}" when referring to the person in question.`;
     return this.getCompletion(prompt);
   }
 
-  async answerGeneralQuestion(question: string): Promise<string> {
+  async answerGeneralQuestion(question: string, isHelper: boolean = false): Promise<string> {
+    const context = isHelper ? "a helper assisting a patient" : "a patient";
+    const pronoun = isHelper ? "they" : "you";
     const prompt = `
-You are a helpful medical assistant providing information to a patient. The patient has asked: "${question}"
+You are a helpful medical assistant providing information to ${context}.
 
-Provide a helpful, informative answer to this question. Include any relevant information that might help the user understand better.
+Question: ${question}
 
-Your response should be clear, helpful, and written in a conversational but professional tone. If the question is outside your scope of knowledge or requires personalized medical advice, indicate that the user should consult with a healthcare professional.`;
+Please provide a helpful, accurate response in a conversational but professional tone. Use markdown formatting for better readability. Use "${pronoun}" when referring to the person in question.`;
     return this.getCompletion(prompt);
   }
 
-  async getAllMedicationsInfo(question: string, medications: Medication[]): Promise<string> {
-    const medicationDetails = medications
-      .map(med => `- ${med.name} (${med.dosage}) - ${med.frequency}${med.instructions ? ` - ${med.instructions}` : ''}`)
-      .join("\n");
+  async getAllMedicationsInfo(medications: Medication[], question: string, isHelper: boolean = false): Promise<string> {
+    const context = isHelper ? "a helper assisting a patient" : "a patient";
+    const pronoun = isHelper ? "they" : "you";
+    const medicationDetails = medications.map(med =>
+      `- ${med.name} (${med.dosage}, ${med.frequency})`
+    ).join("\n");
 
     const prompt = `
-You are a helpful medical assistant providing information to a patient about their medications. The patient has asked: "${question}"
+# Comprehensive Medication Overview
 
-The patient is currently taking the following medications:
+## Current Medications
 ${medicationDetails}
 
-Provide a comprehensive answer about these medications based on the question. Include any relevant warnings, interactions, or special considerations.
+## Question
+${question}
 
-Your response should be clear, helpful, and written in a conversational but professional tone. Focus on addressing the specific question while providing context about all the medications listed.`;
+## Response
+[Provide a comprehensive answer to the question, considering all medications]
+
+## Important Notes
+[Include any special considerations or warnings]
+
+Please provide clear, detailed information using markdown formatting. Use "${pronoun}" when referring to the person taking the medication.`;
     return this.getCompletion(prompt);
   }
 }

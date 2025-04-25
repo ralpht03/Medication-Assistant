@@ -198,67 +198,67 @@ export async function POST(request: Request) {
 
       // OpenAI Service Actions
       case 'info':
-        if (!medication?.name) {
-          return NextResponse.json({ error: 'Medication name is required' }, { status: 400 });
+        if (!medication) {
+          return NextResponse.json({ error: 'Medication data is required' }, { status: 400 });
         }
-        const infoResult = await openAIService.getMedicationInfo(medication.name);
-        return NextResponse.json({ info: infoResult });
+        const info = await openAIService.getMedicationInfo(medication, body.helperContext);
+        return NextResponse.json({ info });
 
       case 'sideEffects':
-        if (!medication?.name) {
-          return NextResponse.json({ error: 'Medication name is required' }, { status: 400 });
+        if (!medication) {
+          return NextResponse.json({ error: 'Medication data is required' }, { status: 400 });
         }
-        const effectsResult = await openAIService.getSideEffects(medication.name);
-        return NextResponse.json({ effects: effectsResult });
+        const effects = await openAIService.getSideEffects(medication, body.helperContext);
+        return NextResponse.json({ effects });
 
       case 'interactions':
-        const medications = body.medications || await medicationService.getMedications(patientId);
-        const interactionsResult = await openAIService.checkInteractions(medications);
-        return NextResponse.json({ interactions: interactionsResult });
+        if (!medications) {
+          return NextResponse.json({ error: 'Medications data is required' }, { status: 400 });
+        }
+        const interactions = await openAIService.checkInteractions(medications, body.helperContext);
+        return NextResponse.json({ interactions });
 
       case 'missedDose':
         if (!medication) {
           return NextResponse.json({ error: 'Medication data is required' }, { status: 400 });
         }
-        const missedDoseResult = await openAIService.handleMissedDose(medication);
-        return NextResponse.json({ guidance: missedDoseResult });
+        const guidance = await openAIService.getMissedDoseGuidance(medication, body.helperContext);
+        return NextResponse.json({ guidance });
 
       case 'emergency':
-        if (!question) {
-          return NextResponse.json({ error: 'Question is required' }, { status: 400 });
+        if (!medication) {
+          return NextResponse.json({ error: 'Medication data is required' }, { status: 400 });
         }
-        const emergencyResult = await openAIService.handleEmergencyQuestion(question, medication);
-        return NextResponse.json({ response: emergencyResult });
+        const emergencyGuidance = await openAIService.getEmergencyGuidance(medication, question, body.helperContext);
+        return NextResponse.json({ guidance: emergencyGuidance });
 
       case 'schedule':
-        const medsForSchedule = body.medications || await medicationService.getMedications(patientId);
-        const scheduleResult = await openAIService.getDailySchedule(medsForSchedule);
-        return NextResponse.json({ schedule: scheduleResult });
-        
-      case 'generalInfo':
-        // Handle general medical questions without medication context
-        if (!question) {
-          return NextResponse.json({ error: 'Question is required' }, { status: 400 });
+        if (!medications) {
+          return NextResponse.json({ error: 'Medications data is required' }, { status: 400 });
         }
-        const generalInfoResult = await openAIService.getGeneralMedicalInfo(question);
-        return NextResponse.json({ info: generalInfoResult });
-        
-      case 'generalQuestion':
-        // Handle any question without a specific category
-        if (!question) {
-          return NextResponse.json({ error: 'Question is required' }, { status: 400 });
-        }
-        const generalQuestionResult = await openAIService.answerGeneralQuestion(question);
-        return NextResponse.json({ response: generalQuestionResult });
-        
+        const schedule = await openAIService.getSchedule(medications, body.helperContext);
+        return NextResponse.json({ schedule });
+
       case 'allMedications':
-        // Handle questions about all medications
+        if (!medications) {
+          return NextResponse.json({ error: 'Medications data is required' }, { status: 400 });
+        }
+        const allMedInfo = await openAIService.getAllMedicationsInfo(medications, question, body.helperContext);
+        return NextResponse.json({ response: allMedInfo });
+
+      case 'generalInfo':
         if (!question) {
           return NextResponse.json({ error: 'Question is required' }, { status: 400 });
         }
-        const allMeds = body.medications || await medicationService.getMedications(patientId);
-        const allMedsResult = await openAIService.getAllMedicationsInfo(question, allMeds);
-        return NextResponse.json({ response: allMedsResult });
+        const generalInfo = await openAIService.getGeneralMedicalInfo(question, body.helperContext);
+        return NextResponse.json({ response: generalInfo });
+
+      case 'generalQuestion':
+        if (!question) {
+          return NextResponse.json({ error: 'Question is required' }, { status: 400 });
+        }
+        const generalResponse = await openAIService.answerGeneralQuestion(question, body.helperContext);
+        return NextResponse.json({ response: generalResponse });
 
       default:
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
