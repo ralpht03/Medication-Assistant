@@ -2,6 +2,7 @@ export interface Alerts {
   PartitionKey: string // patientId
   RowKey: string
   Timestamp: string
+  timestamp?: string // Optional lowercase version
   patientId: string
   medicationId: string
   type: string

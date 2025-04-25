@@ -86,7 +86,7 @@ export async function GET(request: Request) {
       // Get patient info for the alert
       let patientName = 'Unknown';
       try {
-        const patient = await usersTable.getEntity('USER', entity.partitionKey as string);
+        const patient = await usersTable.getEntity('patient', entity.partitionKey as string);
         patientName = `${patient.firstName} ${patient.lastName}`;
       } catch (error) {
         console.error('Error fetching patient info:', error);
@@ -96,7 +96,7 @@ export async function GET(request: Request) {
         id: entity.rowKey,
         type: entity.type,
         message: entity.message,
-        timestamp: entity.Timestamp,
+        timestamp: entity.timestamp || entity.Timestamp,
         read: entity.read || false,
         priority: entity.priority || 'medium',
         medicationId: entity.medicationId,
@@ -232,7 +232,7 @@ async function checkMissedDoses() {
               const usersTable = createTableClient('Users');
               let patientName = patientId;
               try {
-                const patient = await usersTable.getEntity('USER', patientId as string);
+                const patient = await usersTable.getEntity('patient', patientId as string);
                 patientName = `${patient.firstName} ${patient.lastName}`;
               } catch (error) {
                 console.warn(`Could not find patient details for ${patientId}`);
@@ -390,7 +390,7 @@ async function getAdminAlerts(request: Request) {
         id: entity.rowKey,
         type: entity.type,
         message: entity.message,
-        timestamp: entity.Timestamp,
+        timestamp: entity.timestamp || entity.Timestamp,
         read: entity.read || false,
         priority: entity.priority || 'medium',
         medicationId: entity.medicationId,
@@ -427,7 +427,7 @@ async function getAdminAlerts(request: Request) {
             id: entity.rowKey,
             type: entity.type,
             message: entity.message,
-            timestamp: entity.Timestamp,
+            timestamp: entity.timestamp || entity.Timestamp,
             read: entity.read || false,
             priority: entity.priority || 'medium',
             medicationId: entity.medicationId,
