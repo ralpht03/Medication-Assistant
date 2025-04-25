@@ -217,14 +217,20 @@ export class UserService {
 
   async signup(userData: SignupData): Promise<AuthResult> {
     try {
-      // Check if user exists
-      const filter = odata`PartitionKey eq 'USER' and email eq ${userData.email}`;
-      const existingUsers = this.usersTableClient.listEntities<AzureTableUser>({ queryOptions: { filter } });
-      
+      // Check if user exists by searching across all roles
+      const roles = ['admin', 'patient', 'helper'];
       let userExists = false;
-      for await (const user of existingUsers) {
-        userExists = true;
-        break;
+      
+      for (const role of roles) {
+        const filter = odata`PartitionKey eq ${role} and email eq ${userData.email}`;
+        const existingUsers = this.usersTableClient.listEntities<AzureTableUser>({ queryOptions: { filter } });
+        
+        for await (const user of existingUsers) {
+          userExists = true;
+          break;
+        }
+        
+        if (userExists) break;
       }
       
       if (userExists) {
@@ -238,9 +244,9 @@ export class UserService {
       const userId = uuidv4();
       const now = new Date().toISOString();
       
-      // Create user entity
+      // Create user entity with role-based partition key
       const userEntity: AzureTableUser = {
-        partitionKey: 'USER',
+        partitionKey: userData.role,
         rowKey: userId,
         email: userData.email,
         passwordHash: hashedPassword,
@@ -310,14 +316,20 @@ export class UserService {
 
   async login(loginData: LoginData): Promise<AuthResult> {
     try {
-      // Find user by email
-      const filter = odata`PartitionKey eq 'USER' and email eq ${loginData.email}`;
-      const users = this.usersTableClient.listEntities<AzureTableUser>({ queryOptions: { filter } });
-      
+      // Find user by email across all roles
+      const roles = ['admin', 'patient', 'helper'];
       let user: AzureTableUser | null = null;
-      for await (const entity of users) {
-        user = entity;
-        break;
+      
+      for (const role of roles) {
+        const filter = odata`PartitionKey eq ${role} and email eq ${loginData.email}`;
+        const users = this.usersTableClient.listEntities<AzureTableUser>({ queryOptions: { filter } });
+        
+        for await (const entity of users) {
+          user = entity;
+          break;
+        }
+        
+        if (user) break;
       }
       
       if (!user) {
