@@ -9,8 +9,20 @@ interface Patient {
   id: string;
   name: string;
   email: string;
-  lastMedication: string;
-  nextScheduled: string;
+  lastMedication: {
+    time: string;
+    medication?: {
+      name: string;
+      dosage: string;
+    };
+  };
+  nextScheduled: {
+    time: string;
+    medication?: {
+      name: string;
+      dosage: string;
+    };
+  };
   adherenceRate: number;
   status: 'normal' | 'missed' | 'overdose';
   medicationCount: number;
@@ -52,6 +64,7 @@ export default function AdminPatientsPage() {
         throw new Error(data.error || 'Failed to fetch patients');
       }
 
+      console.log('Received patients data:', data.patients);
       setPatients(data.patients || []);
     } catch (error) {
       console.error('Error fetching patients:', error);
@@ -147,10 +160,20 @@ export default function AdminPatientsPage() {
                       {patient.medicationCount}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {patient.lastMedication}
+                      {patient.lastMedication.time}
+                      {patient.lastMedication.medication && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          {patient.lastMedication.medication.name} ({patient.lastMedication.medication.dosage})
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {patient.nextScheduled}
+                      {patient.nextScheduled.time}
+                      {patient.nextScheduled.medication && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          {patient.nextScheduled.medication.name} ({patient.nextScheduled.medication.dosage})
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">

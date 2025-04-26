@@ -21,6 +21,7 @@ function createTableClient(tableName: string): TableClient {
 
 const usersTableClient = createTableClient('Users');
 const medicationsTableClient = createTableClient('medications');
+const verificationLogsTableClient = createTableClient('verificationLogs');
 
 export async function GET(request: Request) {
   try {
@@ -121,16 +122,59 @@ export async function GET(request: Request) {
         console.error(`Error fetching medications for patient ${patientId}:`, error);
       }
 
-      // Calculate adherence rate and status
-      const adherenceRate = calculateAdherenceRate(medications);
+      // Calculate adherence rate using verification logs
+      let adherenceRate = 0;
+      try {
+        // Get verification logs for the last 30 days
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        const filter = odata`PartitionKey eq '${patientId}' and Timestamp ge datetime'${thirtyDaysAgo.toISOString()}'`;
+        const verificationLogs = [];
+        
+        for await (const log of verificationLogsTableClient.listEntities({ queryOptions: { filter } })) {
+          verificationLogs.push(log);
+        }
+
+        // Calculate adherence metrics
+        const totalVerifications = verificationLogs.length;
+        const successfulVerifications = verificationLogs.filter(log => log.status === 'taken').length;
+        const correctDoseVerifications = verificationLogs.filter(log => log.status === 'taken' && log.isCorrectDose).length;
+        
+        // Calculate adherence percentage based on correct dosage
+        adherenceRate = totalVerifications > 0 
+          ? Math.round((correctDoseVerifications / totalVerifications) * 100)
+          : 0;
+
+        console.log('Adherence calculation:', {
+          patientId,
+          totalVerifications,
+          successfulVerifications,
+          correctDoseVerifications,
+          adherenceRate
+        });
+      } catch (error) {
+        console.error(`Error calculating adherence for patient ${patientId}:`, error);
+      }
+
       const status = determineStatus(medications);
+
+      const lastMedication = getLastMedicationTime(medications);
+      const nextScheduled = getNextScheduledTime(medications);
+
+      console.log('Patient medications:', {
+        patientId: patientUser.rowKey,
+        medications,
+        lastMedication,
+        nextScheduled
+      });
 
       patients.push({
         id: patientUser.rowKey,
         name: `${patientUser.firstName} ${patientUser.lastName}`,
         email: patientUser.email,
-        lastMedication: getLastMedicationTime(medications),
-        nextScheduled: getNextScheduledTime(medications),
+        lastMedication,
+        nextScheduled,
         adherenceRate,
         status,
         medicationCount: medications.length
@@ -145,15 +189,6 @@ export async function GET(request: Request) {
 }
 
 // Helper functions
-function calculateAdherenceRate(medications: any[]): number {
-  if (medications.length === 0) return 0;
-  
-  const totalDoses = medications.reduce((sum, med) => sum + (med.dosesTaken || 0), 0);
-  const totalScheduled = medications.reduce((sum, med) => sum + (med.dosesScheduled || 0), 0);
-  
-  return totalScheduled > 0 ? Math.round((totalDoses / totalScheduled) * 100) : 0;
-}
-
 function determineStatus(medications: any[]): 'normal' | 'missed' | 'overdose' {
   if (medications.length === 0) return 'normal';
   
@@ -170,26 +205,56 @@ function determineStatus(medications: any[]): 'normal' | 'missed' | 'overdose' {
   return 'normal';
 }
 
-function getLastMedicationTime(medications: any[]): string {
-  if (medications.length === 0) return 'Never';
+function getLastMedicationTime(medications: any[]): { time: string; medication?: { name: string; dosage: string } } {
+  if (medications.length === 0) return { time: 'Never' };
   
+  let lastMedication = null;
   const lastTaken = medications.reduce((latest, med) => {
-    if (!med.lastTaken) return latest;
-    const takenTime = new Date(med.lastTaken);
-    return takenTime > latest ? takenTime : latest;
+    if (!med.lastFilled) return latest;
+    const takenTime = new Date(med.lastFilled);
+    if (takenTime > latest) {
+      lastMedication = med;
+      return takenTime;
+    }
+    return latest;
   }, new Date(0));
   
-  return lastTaken.getTime() === 0 ? 'Never' : lastTaken.toLocaleString();
+  return {
+    time: lastTaken.getTime() === 0 ? 'Never' : lastTaken.toLocaleString(),
+    medication: lastMedication ? {
+      name: lastMedication.name,
+      dosage: lastMedication.dosage
+    } : undefined
+  };
 }
 
-function getNextScheduledTime(medications: any[]): string {
-  if (medications.length === 0) return 'No medications';
+function getNextScheduledTime(medications: any[]): { time: string; medication?: { name: string; dosage: string } } {
+  if (medications.length === 0) return { time: 'No medications' };
   
+  let nextMedication = null;
   const nextDose = medications.reduce((earliest, med) => {
-    if (!med.nextDoseTime) return earliest;
-    const doseTime = new Date(med.nextDoseTime);
-    return doseTime < earliest ? doseTime : earliest;
+    if (!med.time) return earliest;
+    const [hours, minutes] = med.time.split(':').map(Number);
+    const doseTime = new Date();
+    doseTime.setHours(hours, minutes, 0, 0);
+    
+    // If the time has already passed today, set it to tomorrow
+    if (doseTime < new Date()) {
+      doseTime.setDate(doseTime.getDate() + 1);
+    }
+    
+    if (doseTime < earliest) {
+      nextMedication = med;
+      return doseTime;
+    }
+    return earliest;
   }, new Date(8640000000000000)); // Far future date
   
-  return nextDose.getTime() === 8640000000000000 ? 'No medications' : nextDose.toLocaleString();
+  return {
+    time: nextDose.getTime() === 8640000000000000 ? 'No medications' : nextDose.toLocaleString(),
+    medication: nextMedication ? {
+      name: nextMedication.name,
+      dosage: nextMedication.dosage
+    } : undefined
+  };
 }
