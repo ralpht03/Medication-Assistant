@@ -280,88 +280,53 @@ export async function POST(request: Request) {
   }
 }
 
-// Add PUT method for updating medications
 export async function PUT(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const patientId = searchParams.get('patientId');
-    const medicationId = searchParams.get('medicationId');
-    
-    if (!patientId || !medicationId) {
-      return NextResponse.json(
-        { error: 'Patient ID and Medication ID are required' }, 
-        { status: 400 }
-      );
-    }
-    
     const body = await request.json();
-    const updatedMedication = await medicationService.updateMedication(patientId, medicationId, body);
-    
+    const { patientId, medicationId, medication } = body;
+
+    if (!patientId || !medicationId || !medication) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // Update the medication
+    const updatedMedication = await medicationService.updateMedication(patientId, medicationId, medication);
     if (!updatedMedication) {
       return NextResponse.json({ error: 'Medication not found' }, { status: 404 });
     }
-    
+
     return NextResponse.json({
       message: 'Medication updated successfully',
       medication: updatedMedication
     });
   } catch (error) {
     console.error('Error updating medication:', error);
-    if (error instanceof Error) {
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      });
-    }
     return NextResponse.json(
-      { error: 'Failed to update medication', details: (error as Error).message },
+      { error: 'Failed to update medication' },
       { status: 500 }
     );
   }
 }
 
-// Add DELETE method for deleting medications
 export async function DELETE(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const patientId = searchParams.get('patientId');
-    const medicationId = searchParams.get('medicationId');
-    const deleteAll = searchParams.get('deleteAll');
-    
-    if (!patientId) {
-      return NextResponse.json({ error: 'Patient ID is required' }, { status: 400 });
+    const body = await request.json();
+    const { patientId, medicationId } = body;
+
+    if (!patientId || !medicationId) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
-    
-    // Delete all medications for a patient
-    if (deleteAll === 'true') {
-      await medicationService.deleteAllMedications(patientId);
-      return NextResponse.json({ message: 'All medications deleted successfully' });
-    }
-    
-    // Delete a specific medication
-    if (!medicationId) {
-      return NextResponse.json({ error: 'Medication ID is required' }, { status: 400 });
-    }
-    
-    const deleted = await medicationService.deleteMedication(patientId, medicationId);
-    
-    if (!deleted) {
-      return NextResponse.json({ error: 'Medication not found' }, { status: 404 });
-    }
-    
-    return NextResponse.json({ message: 'Medication deleted successfully' });
+
+    // Delete the medication
+    await medicationService.deleteMedication(patientId, medicationId);
+
+    return NextResponse.json({
+      message: 'Medication deleted successfully'
+    });
   } catch (error) {
     console.error('Error deleting medication:', error);
-    if (error instanceof Error) {
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      });
-    }
     return NextResponse.json(
-      { error: 'Failed to delete medication', details: (error as Error).message },
+      { error: 'Failed to delete medication' },
       { status: 500 }
     );
   }

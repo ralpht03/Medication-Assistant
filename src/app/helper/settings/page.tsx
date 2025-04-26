@@ -4,37 +4,30 @@ import { useState, useEffect } from 'react';
 import PageLayout from '@/components/PageLayout';
 import { 
   Bell, 
-  Shield, 
   User, 
   Clock,
   Smartphone,
   Mail,
   Phone,
-  AlertCircle,
-  Users,
   Trash2
 } from 'lucide-react';
 
-interface AdminPreferences {
+interface HelperPreferences {
   notifications: {
     email: boolean;
     push: boolean;
     sms: boolean;
-    highPriorityAlerts: boolean;
-    patientUpdates: boolean;
   };
   timezone: string;
   language: string;
 }
 
-export default function AdminSettingsPage() {
-  const [preferences, setPreferences] = useState<AdminPreferences>({
+export default function HelperSettingsPage() {
+  const [preferences, setPreferences] = useState<HelperPreferences>({
     notifications: {
       email: true,
       push: true,
       sms: false,
-      highPriorityAlerts: true,
-      patientUpdates: true,
     },
     timezone: "America/New_York",
     language: "en",
@@ -63,8 +56,6 @@ export default function AdminSettingsPage() {
               email: data.preferences?.notifications?.email ?? true,
               push: data.preferences?.notifications?.push ?? true,
               sms: data.preferences?.notifications?.sms ?? false,
-              highPriorityAlerts: data.preferences?.notifications?.highPriorityAlerts ?? true,
-              patientUpdates: data.preferences?.notifications?.patientUpdates ?? true,
             },
             timezone: data.preferences?.timezone ?? "America/New_York",
             language: data.preferences?.language ?? "en",
@@ -79,7 +70,7 @@ export default function AdminSettingsPage() {
     fetchSettings();
   }, []);
 
-  const handleNotificationToggle = (type: keyof AdminPreferences['notifications']) => {
+  const handleNotificationToggle = (type: keyof HelperPreferences['notifications']) => {
     setPreferences(prev => ({
       ...prev,
       notifications: {
@@ -148,7 +139,7 @@ export default function AdminSettingsPage() {
   };
 
   return (
-    <PageLayout userType="admin" title="Admin Settings">
+    <PageLayout userType="helper" title="Settings">
       {message.text && (
         <div className={`mb-6 p-4 rounded-md ${
           message.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
@@ -199,31 +190,15 @@ export default function AdminSettingsPage() {
 
             <div className="flex items-center justify-between">
               <div className="flex items-center">
-                <AlertCircle className="h-5 w-5 text-gray-400 mr-2" />
-                <span>High Priority Alerts</span>
+                <Phone className="h-5 w-5 text-gray-400 mr-2" />
+                <span>SMS Notifications</span>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
                   type="checkbox"
                   className="sr-only peer"
-                  checked={preferences.notifications.highPriorityAlerts}
-                  onChange={() => handleNotificationToggle('highPriorityAlerts')}
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <Users className="h-5 w-5 text-gray-400 mr-2" />
-                <span>Patient Updates</span>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={preferences.notifications.patientUpdates}
-                  onChange={() => handleNotificationToggle('patientUpdates')}
+                  checked={preferences.notifications.sms}
+                  onChange={() => handleNotificationToggle('sms')}
                 />
                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>

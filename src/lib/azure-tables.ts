@@ -582,4 +582,169 @@ export class UserService {
       throw error;
     }
   }
+
+  async unassignPatientFromAdmin(patientId: string, adminId: string): Promise<void> {
+    try {
+      // First, verify that the admin exists and is actually an admin
+      let admin: AzureTableUser | null = null;
+      try {
+        admin = await this.usersTableClient.getEntity<AzureTableUser>('USER', adminId);
+      } catch (error: any) {
+        if (error.statusCode === 404) {
+          throw new Error(`Admin with ID ${adminId} not found`);
+        }
+        throw error;
+      }
+
+      if (admin.role !== 'admin') {
+        throw new Error(`User with ID ${adminId} is not an admin`);
+      }
+
+      // Next, verify that the patient exists and is actually a patient
+      let patient: AzureTablePatient | null = null;
+      try {
+        patient = await this.patientsTableClient.getEntity<AzureTablePatient>('PATIENT', patientId);
+      } catch (error: any) {
+        if (error.statusCode === 404) {
+          throw new Error(`Patient with ID ${patientId} not found`);
+        }
+        throw error;
+      }
+
+      // Get all relations for this admin-patient pair
+      const filter = odata`PartitionKey eq ${adminId} and patientId eq ${patientId}`;
+      const relations = this.adminPatientRelationsTableClient.listEntities({ queryOptions: { filter } });
+      
+      // Delete all relations
+      for await (const relation of relations) {
+        await this.adminPatientRelationsTableClient.deleteEntity(relation.partitionKey, relation.rowKey);
+      }
+
+      // Update the patient's adminIds array
+      const adminIds = JSON.parse(patient.adminIds || '[]');
+      const updatedAdminIds = adminIds.filter((id: string) => id !== adminId);
+      
+      await this.patientsTableClient.updateEntity({
+        partitionKey: 'PATIENT',
+        rowKey: patientId,
+        adminIds: JSON.stringify(updatedAdminIds)
+      }, 'Merge');
+
+      // Update the admin's linkedPatients array
+      const linkedPatients = JSON.parse(admin.linkedPatients || '[]');
+      const updatedLinkedPatients = linkedPatients.filter((id: string) => id !== patientId);
+      
+      await this.usersTableClient.updateEntity({
+        partitionKey: 'USER',
+        rowKey: adminId,
+        linkedPatients: JSON.stringify(updatedLinkedPatients)
+      }, 'Merge');
+    } catch (error) {
+      console.error('Error unassigning patient from admin:', error);
+      throw error;
+    }
+  }
+
+  async deleteUser(userId: string): Promise<void> {
+    try {
+      // Get the user to determine their role
+      const user = await this.usersTableClient.getEntity<AzureTableUser>('USER', userId);
+      
+      // Delete the user entity
+      await this.usersTableClient.deleteEntity('USER', userId);
+
+      // If the user is a patient, delete their patient profile and all associated data
+      if (user.role === 'patient') {
+        // Delete patient profile
+        try {
+          await this.patientsTableClient.deleteEntity('PATIENT', userId);
+        } catch (error) {
+          // Ignore if patient profile doesn't exist
+        }
+
+        // Delete all admin-patient relations
+        const filter = odata`patientId eq ${userId}`;
+        const relations = this.adminPatientRelationsTableClient.listEntities({ queryOptions: { filter } });
+        
+        for await (const relation of relations) {
+          await this.adminPatientRelationsTableClient.deleteEntity(relation.partitionKey, relation.rowKey);
+        }
+
+        // Remove patient from all admins' linkedPatients
+        const adminFilter = odata`PartitionKey eq 'USER' and role eq 'admin'`;
+        const admins = this.usersTableClient.listEntities<AzureTableUser>({ queryOptions: { filter: adminFilter } });
+        
+        for await (const admin of admins) {
+          const linkedPatients = JSON.parse(admin.linkedPatients || '[]');
+          const updatedLinkedPatients = linkedPatients.filter((id: string) => id !== userId);
+          
+          await this.usersTableClient.updateEntity({
+            partitionKey: 'USER',
+            rowKey: admin.rowKey,
+            linkedPatients: JSON.stringify(updatedLinkedPatients)
+          }, 'Merge');
+        }
+
+        // Remove patient from all helpers' linkedPatients
+        const helperFilter = odata`PartitionKey eq 'USER' and role eq 'helper'`;
+        const helpers = this.usersTableClient.listEntities<AzureTableUser>({ queryOptions: { filter: helperFilter } });
+        
+        for await (const helper of helpers) {
+          const linkedPatients = JSON.parse(helper.linkedPatients || '[]');
+          const updatedLinkedPatients = linkedPatients.filter((id: string) => id !== userId);
+          
+          await this.usersTableClient.updateEntity({
+            partitionKey: 'USER',
+            rowKey: helper.rowKey,
+            linkedPatients: JSON.stringify(updatedLinkedPatients)
+          }, 'Merge');
+        }
+      }
+
+      // If the user is an admin, delete all their patient relations
+      if (user.role === 'admin') {
+        const filter = odata`PartitionKey eq ${userId}`;
+        const relations = this.adminPatientRelationsTableClient.listEntities({ queryOptions: { filter } });
+        
+        for await (const relation of relations) {
+          await this.adminPatientRelationsTableClient.deleteEntity(relation.partitionKey, relation.rowKey);
+        }
+
+        // Remove admin from all patients' adminIds
+        const patientFilter = odata`PartitionKey eq 'PATIENT'`;
+        const patients = this.patientsTableClient.listEntities<AzureTablePatient>({ queryOptions: { filter: patientFilter } });
+        
+        for await (const patient of patients) {
+          const adminIds = JSON.parse(patient.adminIds || '[]');
+          const updatedAdminIds = adminIds.filter((id: string) => id !== userId);
+          
+          await this.patientsTableClient.updateEntity({
+            partitionKey: 'PATIENT',
+            rowKey: patient.rowKey,
+            adminIds: JSON.stringify(updatedAdminIds)
+          }, 'Merge');
+        }
+      }
+
+      // If the user is a helper, remove them from all patients' linkedHelpers
+      if (user.role === 'helper') {
+        const patientFilter = odata`PartitionKey eq 'USER' and role eq 'patient'`;
+        const patients = this.usersTableClient.listEntities<AzureTableUser>({ queryOptions: { filter: patientFilter } });
+        
+        for await (const patient of patients) {
+          const linkedHelpers = JSON.parse(patient.linkedHelpers || '[]');
+          const updatedLinkedHelpers = linkedHelpers.filter((id: string) => id !== userId);
+          
+          await this.usersTableClient.updateEntity({
+            partitionKey: 'USER',
+            rowKey: patient.rowKey,
+            linkedHelpers: JSON.stringify(updatedLinkedHelpers)
+          }, 'Merge');
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      throw error;
+    }
+  }
 }

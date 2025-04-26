@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Users, Bell, Mail, LogOut } from 'lucide-react'
+import { Home, Users, Bell, Mail, LogOut, Settings } from 'lucide-react'
 
 const HelperSidebar = () => {
   const pathname = usePathname()
@@ -49,6 +49,16 @@ const HelperSidebar = () => {
           >
             <Mail className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
             <span className="ml-3 text-sm font-medium group-hover:text-blue-600">Invitations</span>
+          </Link>
+
+          <Link
+            href="/helper/settings"
+            className={`flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors group ${
+              pathname === '/helper/settings' ? 'bg-blue-100 text-blue-700' : ''
+            }`}
+          >
+            <Settings className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
+            <span className="ml-3 text-sm font-medium group-hover:text-blue-600">Settings</span>
           </Link>
         </div>
       </nav>
