@@ -11,7 +11,6 @@ import { toast } from 'react-hot-toast';
 interface DashboardStats {
   totalPatients: number;
   pendingAlerts: number;
-  todaySchedule: number;
   adherenceRate: number;
 }
 
@@ -21,7 +20,6 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats>({
     totalPatients: 0,
     pendingAlerts: 0,
-    todaySchedule: 0,
     adherenceRate: 0
   });
   const [loading, setLoading] = useState(true);
@@ -65,12 +63,6 @@ export default function AdminDashboard() {
       const totalPatients = patients.length;
       const pendingAlerts = alerts.length;
       
-      // Count medications scheduled for today
-      const today = new Date().toLocaleDateString();
-      const todaySchedule = patients.reduce((count: number, patient: any) => {
-        return count + (patient.currentMedications?.length > 0 ? 1 : 0);
-      }, 0);
-      
       // Calculate average adherence rate
       const adherenceRate = patients.length > 0 
         ? Math.round(patients.reduce((sum: number, patient: any) => sum + (patient.adherenceRate || 0), 0) / patients.length) 
@@ -79,7 +71,6 @@ export default function AdminDashboard() {
       setStats({
         totalPatients,
         pendingAlerts,
-        todaySchedule,
         adherenceRate
       });
       
