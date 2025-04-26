@@ -28,6 +28,11 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
 
   // Function to handle "Take Now" button click
   const handleTakeNow = () => {
+    console.log('Opening camera modal with medication:', {
+      RowKey: medication.RowKey,
+      id: medication.id,
+      name: medication.name
+    });
     setShowCameraModal(true);
   };
   
@@ -47,17 +52,48 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
     bypassVerification?: boolean;
   }) => {
     try {
+      console.log('handleMedicationTaken received data:', data);
+      
+      // Get user info from localStorage
+      const userStr = localStorage.getItem('user');
+      if (!userStr) throw new Error('User not found');
+      const user = JSON.parse(userStr);
+
+      // Format the current date properly
+      const now = new Date();
+      const timestamp = now.toISOString();
+      const formattedDate = now.toLocaleString();
+
       // Make API call to record the verification
+      console.log('Sending verification data:', {
+        ...data,
+        medicationId: data.medicationId,
+        patientName: `${user.firstName} ${user.lastName}`,
+        verifiedBy: "self",
+        timestamp: timestamp,
+        formattedDate: formattedDate
+      });
+
       const response = await fetch('/api/adherence', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          medicationId: data.medicationId,
+          patientName: `${user.firstName} ${user.lastName}`,
+          verifiedBy: "self",
+          timestamp: timestamp,
+          formattedDate: formattedDate
+        }),
       });
 
+      const responseData = await response.json();
+      console.log('API Response:', responseData);
+
       if (!response.ok) {
-        throw new Error('Failed to record medication verification');
+        throw new Error(`Failed to record medication verification: ${responseData.error || 'Unknown error'}`);
       }
 
       // Call onTake callback after successful API call
@@ -101,12 +137,18 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
         isOpen={showCameraModal}
         onClose={handleModalClose}
         medication={{
-          id: medication.id || medication.RowKey, // Use id if available, fallback to RowKey
+          RowKey: (medication.RowKey || medication.id || '') as string,
           name: medication.name,
           recommendedPillCount: medication.recommendedPillCount,
           patientId: medication.patientId 
         }}
-        onVerificationComplete={handleMedicationTaken}
+        onVerificationComplete={(data) => {
+          if (!medication.RowKey && !medication.id) {
+            showAlert('Invalid medication ID. Please try again.');
+            return;
+          }
+          handleMedicationTaken(data);
+        }}
       />
       
       {/* Alert Message */}

@@ -60,8 +60,8 @@ export class MedicationService {
       const medicationId = uuidv4();
       
       const medicationEntity: Medication = {
-        partitionKey: patientId,
-        rowKey: medicationId,
+        PartitionKey: patientId,
+        RowKey: medicationId,
         name: medication.name,
         dosage: medication.dosage,
         frequency: medication.frequency,
@@ -81,7 +81,11 @@ export class MedicationService {
         updatedAt: now
       };
       
-      await this.medicationsTableClient.createEntity(medicationEntity);
+      await this.medicationsTableClient.createEntity({
+        partitionKey: patientId,
+        rowKey: medicationId,
+        ...medicationEntity
+      });
       return medicationEntity;
     } catch (error) {
       console.error('Error adding medication:', error);
@@ -101,8 +105,8 @@ export class MedicationService {
       // Prepare the update entity
       const now = new Date().toISOString();
       const updateEntity = {
-        partitionKey: patientId,
-        rowKey: medicationId,
+        PartitionKey: patientId,
+        RowKey: medicationId,
         updatedAt: now,
         ...updates
       };
@@ -142,7 +146,7 @@ export class MedicationService {
       const medications = await this.getMedications(patientId);
       
       for (const medication of medications) {
-        await this.medicationsTableClient.deleteEntity(patientId, medication.rowKey);
+        await this.medicationsTableClient.deleteEntity(patientId, medication.RowKey);
       }
     } catch (error) {
       console.error('Error deleting all medications:', error);

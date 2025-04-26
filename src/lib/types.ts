@@ -85,6 +85,8 @@ export interface VerificationLogs {
   notes: string;          // Any additional notes
   verificationMethod: 'camera' | 'manual' | 'helper'; // How it was verified
   isCorrectDose: boolean; // Whether pillCount matches recommendedCount
+  patientName: string;    // Patient's name
+  verifiedBy: string;     // Name of the person who verified (helper or patient)
 }
 
 export interface DashboardMedication extends Medications {

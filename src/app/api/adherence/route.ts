@@ -66,7 +66,9 @@ export async function GET(req: Request) {
         status: entity.status as 'taken' | 'missed' | 'skipped',
         notes: entity.notes as string,
         verificationMethod: entity.verificationMethod as 'camera' | 'manual' | 'helper',
-        isCorrectDose: entity.isCorrectDose as boolean
+        isCorrectDose: entity.isCorrectDose as boolean,
+        patientName: entity.patientName as string,
+        verifiedBy: entity.verifiedBy as string
       });
     }
 
@@ -132,6 +134,8 @@ export async function POST(req: Request) {
       pillCount,
       recommendedPillCount,
       bypassVerification,
+      patientName,
+      verifiedBy
     } = data;
     
     if (!medicationId || !patientId) {
@@ -155,6 +159,13 @@ export async function POST(req: Request) {
       const medicationEntity = await medicationsService.getEntity(patientId, medicationId);
       console.log('Retrieved medication entity:', medicationEntity);
       
+      if (!medicationEntity) {
+        console.error('Medication not found:', { patientId, medicationId });
+        return NextResponse.json({ 
+          error: "Medication not found" 
+        }, { status: 404 });
+      }
+      
       const medication = {
         name: medicationEntity.name as string,
         dosage: medicationEntity.dosage as string,
@@ -162,11 +173,12 @@ export async function POST(req: Request) {
       };
       
       // Create a unique record ID using timestamp
-      const timestamp = new Date().toISOString();
-      const rowKey = `${medicationId}-${timestamp}`;
+      const now = new Date();
+      const timestamp = now.toISOString();
+      const rowKey = `${medicationId}-${now.getTime()}`;
 
       // Check for duplicate verification within the last 15 minutes
-      const fifteenMinutesAgo = new Date();
+      const fifteenMinutesAgo = new Date(now);
       fifteenMinutesAgo.setMinutes(fifteenMinutesAgo.getMinutes() - 15);
       
       const duplicateFilter = `PartitionKey eq '${patientId}' and medicationId eq '${medicationId}' and Timestamp ge datetime'${fifteenMinutesAgo.toISOString()}'`;
@@ -216,7 +228,9 @@ export async function POST(req: Request) {
         status: status,
         notes: notes,
         verificationMethod: bypassVerification ? 'manual' : 'camera',
-        isCorrectDose: isCorrectDose
+        isCorrectDose: isCorrectDose,
+        patientName: data.patientName || 'Unknown',
+        verifiedBy: data.verifiedBy || 'self'
       };
 
       console.log('Creating new verification log:', verificationLog);
@@ -256,7 +270,7 @@ export async function POST(req: Request) {
           message: `Medication verification bypassed for ${medication.name}. Reason: ${notes}`,
           priority: getAlertPriority('verification_bypass'),
           medicationId: medicationId,
-          userId: patientId,
+          patientId: patientId,
           read: false
         };
         alerts.push(bypassAlert);
@@ -277,7 +291,7 @@ export async function POST(req: Request) {
           message: alertMessage,
           priority: getAlertPriority(alertType),
           medicationId: medicationId,
-          userId: patientId,
+          patientId: patientId,
           read: false
         };
         

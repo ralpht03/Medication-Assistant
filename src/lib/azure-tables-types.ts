@@ -1,6 +1,6 @@
 export interface Medication {
-    partitionKey: string;
-    rowKey: string;
+    PartitionKey: string;
+    RowKey: string;
     name: string;
     dosage: string;
     recommendedPillCount: string;

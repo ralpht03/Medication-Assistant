@@ -10,7 +10,7 @@ interface CameraModalProps {
   isOpen: boolean;
   onClose: () => void;
   medication: {
-    id: string;
+    RowKey: string;
     patientId: string;
     name: string;
     recommendedPillCount: string;
@@ -121,8 +121,13 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, medication, 
 
   // Handle pill count confirmation
   const handlePillCountConfirm = (count: string) => {
+    console.log('Confirming pill count with medication:', {
+      RowKey: medication.RowKey,
+      name: medication.name
+    });
+    
     onVerificationComplete({
-      medicationId: medication.id,
+      medicationId: medication.RowKey,
       patientId: medication.patientId,
       pillCount: count,
       recommendedPillCount: medication.recommendedPillCount,
@@ -249,7 +254,7 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, medication, 
               <div className={`${showPillCounter ? 'w-1/2' : 'w-full'}`}>
                 <PillIdentification
                   ref={pillIdentificationRef}
-                  medicationId={medication.id}
+                  medicationId={medication.RowKey}
                   patientId={medication.patientId}
                   onVerificationSuccess={handleVerificationSuccess}
                   onVerificationError={handleVerificationError}

@@ -78,17 +78,19 @@ export default function DashboardPage() {
       }
 
       // Fetch all required data in parallel
-      const [medResponse, alertsResponse] = await Promise.all([
+      const [medResponse, alertsResponse, adherenceResponse] = await Promise.all([
         fetch(`/api/medications?patientId=${patientId}`),
-        fetch(`/api/alerts?userId=${patientId}&role=patient&status=unread`)
+        fetch(`/api/alerts?userId=${patientId}&role=patient&status=unread`),
+        fetch(`/api/adherence?patientId=${patientId}`)
       ]);
 
-      if (!medResponse.ok) {
-        throw new Error('Failed to fetch medication data');
+      if (!medResponse.ok || !adherenceResponse.ok) {
+        throw new Error('Failed to fetch dashboard data');
       }
 
       const medResponseText = await medResponse.text();
       const alertsData = await alertsResponse.json();
+      const adherenceData = await adherenceResponse.json();
       
       let responseData;
       try {
@@ -114,16 +116,30 @@ export default function DashboardPage() {
         
         return {
           ...med,
+          patientId: patientId,
           status,
           time: timeStr,
           isOverdue: medTime < now && status === "missed",
-          isCurrent: Math.abs(medTime.getTime() - now.getTime()) < 1800000
+          isCurrent: Math.abs(medTime.getTime() - now.getTime()) < 1800000,
+          RowKey: med.RowKey || med.rowKey || med.id
         };
       });
 
       setStats({
         medications: processedMedications,
-        adherenceData: emptyAdherenceData, // This would be populated with actual adherence data
+        adherenceData: {
+          percentage: parseInt(adherenceData.adherencePercentage),
+          streak: parseInt(adherenceData.streak),
+          dailyHistory: adherenceData.dailyAdherence.map((day: any) => ({
+            date: day.date,
+            taken: parseInt(day.taken),
+            total: parseInt(day.total)
+          })),
+          totalVerifications: parseInt(adherenceData.totalVerifications),
+          successfulVerifications: parseInt(adherenceData.successfulVerifications),
+          correctDoseVerifications: parseInt(adherenceData.correctDoseVerifications),
+          incorrectDoseVerifications: parseInt(adherenceData.incorrectDoseVerifications)
+        },
         unreadAlerts: alertsData.length
       });
       
@@ -156,6 +172,11 @@ export default function DashboardPage() {
       
       // Refresh dashboard data after action
       await fetchDashboardData();
+      
+      // Add a small delay to ensure the API has processed the verification
+      setTimeout(async () => {
+        await fetchDashboardData();
+      }, 1000);
     } catch (error) {
       console.error('Error handling medication action:', error);
     }
@@ -215,19 +236,15 @@ export default function DashboardPage() {
                 )}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {stats.medications.map((medication) => {
-                  // Create a unique key by combining all possible ID fields
-                  const uniqueKey = `${medication.id || ''}-${medication.rowKey || ''}-${medication.RowKey || ''}`;
-                  return (
-                    <MedicationCard
-                      key={uniqueKey}
-                      medication={medication}
-                      showActions={true}
-                      onTake={() => handleMedicationAction(uniqueKey, 'take')}
-                      onSnooze={() => handleMedicationAction(uniqueKey, 'snooze')}
-                    />
-                  );
-                })}
+                {stats.medications.map((medication) => (
+                  <MedicationCard
+                    key={medication.RowKey}
+                    medication={medication}
+                    showActions={true}
+                    onTake={() => handleMedicationAction(medication.RowKey, 'take')}
+                    onSnooze={() => handleMedicationAction(medication.RowKey, 'snooze')}
+                  />
+                ))}
               </div>
             </div>
           </div>

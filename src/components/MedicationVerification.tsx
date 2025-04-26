@@ -145,7 +145,7 @@ export default function MedicationVerification({
           isOpen={true}
           onClose={() => setShowCamera(false)}
           medication={{
-            id: medication.id,
+            RowKey: medication.id,
             name: medication.name,
             recommendedPillCount: medication.recommendedPillCount || '1',
             patientId: medication.patientId || ''
