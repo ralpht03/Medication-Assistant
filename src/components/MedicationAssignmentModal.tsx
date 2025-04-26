@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { X, AlertCircle, CheckCircle, Loader2 } from "lucide-react"
 
 interface Patient {
@@ -19,6 +19,20 @@ const MedicationAssignmentModal = ({
   onClose,
   onMedicationAssigned
 }: MedicationAssignmentModalProps) => {
+  // Preset medication options
+  const presetMedications = [
+    "Amoxicillin",
+    "Cefdinir",
+    "Diclofenac",
+    "Memantine",
+    "Men Multi",
+    "Negative",
+    "Omega3",
+    "One A Day Mens",
+    "One A Day Womens",
+    "Prednisone"
+  ]
+
   // Form state
   const [name, setName] = useState("")
   const [dosage, setDosage] = useState("")
@@ -38,6 +52,27 @@ const MedicationAssignmentModal = ({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+
+  // Prefill prescribing doctor with logged-in admin's name
+  useEffect(() => {
+    try {
+      // Get the user from localStorage
+      const userStr = localStorage.getItem('user')
+      if (userStr) {
+        const user = JSON.parse(userStr)
+        // Check if the user is an admin
+        if (user.role === 'admin') {
+          // Set the prescribing doctor field with the admin's name
+          const adminName = `${user.firstName || ''} ${user.lastName || ''}`.trim()
+          if (adminName) {
+            setPrescribingDoctor(adminName)
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error getting admin information:', err)
+    }
+  }, [])
 
   // Time options
   const timeOptions = [
@@ -178,15 +213,20 @@ const MedicationAssignmentModal = ({
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="medication-name">
                     Medication Name*
                   </label>
-                  <input
+                  <select
                     id="medication-name"
-                    type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                    placeholder="e.g., Lisinopril"
                     required
-                  />
+                  >
+                    <option value="">Select a medication</option>
+                    {presetMedications.map((medication) => (
+                      <option key={medication} value={medication}>
+                        {medication}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Dosage */}
