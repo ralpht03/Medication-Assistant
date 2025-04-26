@@ -47,18 +47,39 @@ const eventStyleGetter = (event: MedicationEvent) => {
     padding: '4px'
   }
 
+  // Generate a consistent color for each medication name
+  const getMedicationColor = (name: string) => {
+    // Simple hash function to generate a consistent color for each medication
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    // Convert hash to a color
+    const h = hash % 360;
+    return `hsl(${h}, 70%, 45%)`;
+  };
+
+  // Base color on medication name
+  const baseColor = getMedicationColor(event.medication.name);
+
+  // Adjust color based on status
   switch (event.status) {
     case 'taken':
-      style.backgroundColor = '#10B981' // green-500
-      break
+      style.backgroundColor = baseColor;
+      style.opacity = 0.7;
+      break;
     case 'missed':
-      style.backgroundColor = '#EF4444' // red-500
-      break
+      style.backgroundColor = baseColor;
+      style.opacity = 0.4;
+      break;
     case 'upcoming':
-      style.backgroundColor = '#F59E0B' // amber-500
-      break
+      style.backgroundColor = baseColor;
+      style.opacity = 1;
+      break;
     default:
-      style.backgroundColor = '#6B7280' // gray-500
+      style.backgroundColor = baseColor;
+      style.opacity = 0.5;
   }
 
   return {

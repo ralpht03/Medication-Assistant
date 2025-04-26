@@ -1,10 +1,23 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Calendar from '@/components/shared/Calendar'
 import Timeline from '@/components/shared/Timeline'
-import { format, addDays, subDays } from 'date-fns'
+import { format, addDays, subDays, parse } from 'date-fns'
 import PageLayout from '@/components/PageLayout'
+import { useRouter } from 'next/navigation'
+
+interface Medication {
+  rowKey: string
+  name: string
+  dosage: string
+  frequency: string
+  time?: string
+  instructions?: string
+  startDate?: string
+  endDate?: string
+  lastFilled?: string
+}
 
 interface MedicationEvent {
   id: string | number
@@ -20,74 +33,136 @@ interface MedicationEvent {
   }
 }
 
-// Mock data for calendar events
-const mockCalendarEvents: MedicationEvent[] = [
-  {
-    id: 1,
-    title: "Aspirin 100mg",
-    start: new Date(2025, 1, 7, 8, 0),
-    end: new Date(2025, 1, 7, 8, 15),
-    status: "taken",
-    medication: {
-      name: "Aspirin",
-      dosage: "100mg",
-      frequency: "Daily",
-      instructions: "Take with food"
-    }
-  },
-  {
-    id: 2,
-    title: "Lisinopril 10mg",
-    start: new Date(2025, 1, 7, 12, 0),
-    end: new Date(2025, 1, 7, 12, 15),
-    status: "missed",
-    medication: {
-      name: "Lisinopril",
-      dosage: "10mg",
-      frequency: "Daily",
-      instructions: "Take with water"
-    }
-  },
-  {
-    id: 3,
-    title: "Metformin 500mg",
-    start: new Date(2025, 1, 7, 18, 0),
-    end: new Date(2025, 1, 7, 18, 15),
-    status: "upcoming",
-    medication: {
-      name: "Metformin",
-      dosage: "500mg",
-      frequency: "Daily",
-      instructions: "Take with evening meal"
-    }
-  }
-]
-
-// Mock data for timeline events
-const mockTimelineEvents = mockCalendarEvents.map(event => ({
-  id: event.id,
-  medicationName: event.medication.name,
-  dosage: event.medication.dosage,
-  scheduledTime: event.start,
-  status: event.status,
-  notes: event.medication.instructions
-}))
-
 export default function SchedulePage() {
+  const [medications, setMedications] = useState<Medication[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<MedicationEvent | null>(null)
   const [dateRange, setDateRange] = useState({
     start: subDays(new Date(), 7),
     end: addDays(new Date(), 7)
   })
   const [statusFilter, setStatusFilter] = useState<'all' | 'taken' | 'missed' | 'upcoming'>('all')
+  const router = useRouter()
+
+  useEffect(() => {
+    const fetchMedications = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        // Get the patient ID from localStorage
+        const userStr = localStorage.getItem('user')
+        if (!userStr) {
+          router.push('/login')
+          return
+        }
+        
+        const user = JSON.parse(userStr)
+        const patientId = user.id || user.rowKey
+        
+        if (!patientId) {
+          throw new Error('Patient ID not found')
+        }
+        
+        // Fetch medications
+        const response = await fetch(`/api/medications?patientId=${patientId}`)
+        if (!response.ok) {
+          throw new Error('Failed to fetch medications')
+        }
+        
+        const data = await response.json()
+        setMedications(data.medications || [])
+      } catch (err) {
+        console.error('Error fetching medications:', err)
+        setError(err instanceof Error ? err.message : 'An unknown error occurred')
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchMedications()
+  }, [router])
+
+  // Transform medications into calendar events
+  const calendarEvents: MedicationEvent[] = medications.flatMap(medication => {
+    const now = new Date()
+    const [hours, minutes] = (medication.time || '08:00').split(':').map(Number)
+    
+    // Parse start and end dates
+    const startDate = medication.startDate ? new Date(medication.startDate) : new Date()
+    const endDate = medication.endDate ? new Date(medication.endDate) : addDays(new Date(), 30) // Default to 30 days if no end date
+    
+    // Generate events for each day in the range
+    const events: MedicationEvent[] = []
+    let currentDate = new Date(startDate)
+    
+    while (currentDate <= endDate) {
+      // Create event for current date
+      const eventDate = new Date(currentDate)
+      eventDate.setHours(hours, minutes, 0, 0)
+      
+      // Determine status based on current time
+      let status: 'taken' | 'missed' | 'upcoming' = 'upcoming'
+      if (eventDate < now) {
+        status = 'missed'
+      }
+      
+      events.push({
+        id: `${medication.rowKey}-${currentDate.toISOString()}`,
+        title: `${medication.name} ${medication.dosage}`,
+        start: eventDate,
+        end: new Date(eventDate.getTime() + 15 * 60000), // 15 minutes duration
+        status,
+        medication: {
+          name: medication.name,
+          dosage: medication.dosage,
+          frequency: medication.frequency,
+          instructions: medication.instructions
+        }
+      })
+      
+      // Move to next day
+      currentDate = addDays(currentDate, 1)
+    }
+    
+    return events
+  })
 
   const handleEventClick = (event: MedicationEvent) => {
     setSelectedEvent(event)
   }
 
-  const filteredTimelineEvents = mockTimelineEvents.filter(event =>
+  const filteredTimelineEvents = calendarEvents.map(event => ({
+    id: event.id,
+    medicationName: event.medication.name,
+    dosage: event.medication.dosage,
+    scheduledTime: event.start,
+    status: event.status,
+    notes: event.medication.instructions
+  })).filter(event =>
     statusFilter === 'all' ? true : event.status === statusFilter
   )
+
+  if (loading) {
+    return (
+      <PageLayout userType="patient" title="Medication Schedule">
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      </PageLayout>
+    )
+  }
+
+  if (error) {
+    return (
+      <PageLayout userType="patient" title="Medication Schedule">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-red-500">{error}</div>
+        </div>
+      </PageLayout>
+    )
+  }
 
   return (
     <PageLayout userType="patient" title="Medication Schedule">
@@ -96,7 +171,7 @@ export default function SchedulePage() {
         <div className="bg-white rounded-lg shadow-md">
           <div className="p-6">
             <Calendar
-              events={mockCalendarEvents}
+              events={calendarEvents}
               onEventClick={handleEventClick}
             />
           </div>
@@ -143,15 +218,7 @@ export default function SchedulePage() {
                 </div>
               </div>
             </div>
-            <Timeline
-              events={filteredTimelineEvents}
-              onEventClick={(event) => {
-                const calendarEvent = mockCalendarEvents.find(e => e.id === event.id)
-                if (calendarEvent) {
-                  handleEventClick(calendarEvent)
-                }
-              }}
-            />
+            <Timeline events={filteredTimelineEvents} />
           </div>
         </div>
       </section>
@@ -185,7 +252,6 @@ export default function SchedulePage() {
                 <span className="font-medium">Status:</span>{' '}
                 <span
                   className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
-
                     ${
                       selectedEvent.status === 'taken'
                         ? 'bg-green-100 text-green-800'
@@ -202,7 +268,7 @@ export default function SchedulePage() {
             <div className="mt-6 flex justify-end">
               <button
                 onClick={() => setSelectedEvent(null)}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
               >
                 Close
               </button>

@@ -43,7 +43,6 @@ export default function Sidebar() {
       { name: 'AI Assistant', href: '/patient/ai-assistant', icon: Bot },
       { name: 'Notifications', href: '/patient/notifications', icon: Bell },
       { name: 'Invitations', href: '/patient/invitations', icon: Mail },
-      { name: 'Help & Support', href: '/patient/help', icon: HelpCircle },
       { name: 'Settings', href: '/patient/settings', icon: Settings },
     ],
     helper: [
