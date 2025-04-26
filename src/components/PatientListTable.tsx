@@ -11,6 +11,7 @@ interface Patient {
   email: string
   currentMedications: Medication[]
   adherenceRate: number
+  adherencePercentage?: number
   alerts?: Alert[]
   profile?: any
   medicalHistory?: any
@@ -126,13 +127,14 @@ const PatientListTable = ({ searchTerm: externalSearchTerm }: PatientListTablePr
     }
     
     // Check adherence rate for status
-    if (patient.adherenceRate >= 80) {
+    const adherenceRate = patient.adherenceRate || patient.adherencePercentage || 0;
+    if (adherenceRate >= 80) {
       return {
         status: "good",
         label: "Good",
         class: "bg-green-100 text-green-800"
       }
-    } else if (patient.adherenceRate >= 60) {
+    } else if (adherenceRate >= 60) {
       return {
         status: "moderate",
         label: "Moderate",
@@ -390,10 +392,10 @@ const PatientListTable = ({ searchTerm: externalSearchTerm }: PatientListTablePr
                         <div className="w-16 bg-gray-200 rounded-full h-2.5">
                           <div
                             className="bg-blue-600 h-2.5 rounded-full"
-                            style={{ width: `${patient.adherenceRate}%` }}
+                            style={{ width: `${patient.adherenceRate || patient.adherencePercentage || 0}%` }}
                           ></div>
                         </div>
-                        <span className="ml-2 text-sm text-gray-500">{patient.adherenceRate}%</span>
+                        <span className="ml-2 text-sm text-gray-500">{patient.adherenceRate || patient.adherencePercentage || 0}%</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

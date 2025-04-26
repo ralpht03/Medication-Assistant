@@ -22,6 +22,7 @@ function createTableClient(tableName: string): TableClient {
 
 const usersTableClient = createTableClient('Users');
 const medicationsTableClient = createTableClient('medications');
+const verificationLogsTableClient = createTableClient('verificationLogs');
 
 export async function GET(request: NextRequest) {
   try {
@@ -110,8 +111,40 @@ export async function GET(request: NextRequest) {
         console.error(`Error fetching medications for patient ${patientId}:`, error);
       }
 
-      // Calculate adherence rate
-      const adherenceRate = calculateAdherenceRate(medications);
+      // Calculate adherence rate using verification logs
+      let adherenceRate = 0;
+      try {
+        // Get verification logs for the last 30 days
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        const filter = odata`PartitionKey eq '${patientId}' and Timestamp ge datetime'${thirtyDaysAgo.toISOString()}'`;
+        const verificationLogs = [];
+        
+        for await (const log of verificationLogsTableClient.listEntities({ queryOptions: { filter } })) {
+          verificationLogs.push(log);
+        }
+
+        // Calculate adherence metrics
+        const totalVerifications = verificationLogs.length;
+        const successfulVerifications = verificationLogs.filter(log => log.status === 'taken').length;
+        const correctDoseVerifications = verificationLogs.filter(log => log.status === 'taken' && log.isCorrectDose).length;
+        
+        // Calculate adherence percentage based on correct dosage
+        adherenceRate = totalVerifications > 0 
+          ? Math.round((correctDoseVerifications / totalVerifications) * 100)
+          : 0;
+
+        console.log('Adherence calculation:', {
+          patientId,
+          totalVerifications,
+          successfulVerifications,
+          correctDoseVerifications,
+          adherenceRate
+        });
+      } catch (error) {
+        console.error(`Error calculating adherence for patient ${patientId}:`, error);
+      }
 
       patients.push({
         id: patientUser.rowKey,
