@@ -15,6 +15,7 @@ interface Patient {
   alerts?: Alert[]
   profile?: any
   medicalHistory?: any
+  medicationCount?: number
 }
 
 interface Medication {
@@ -253,8 +254,8 @@ const PatientListTable = ({ searchTerm: externalSearchTerm }: PatientListTablePr
           aValue = `${a.firstName} ${a.lastName}`
           bValue = `${b.firstName} ${b.lastName}`
         } else if (sortField === "medicationCount") {
-          aValue = a.currentMedications?.length || 0
-          bValue = b.currentMedications?.length || 0
+          aValue = a.medicationCount || 0
+          bValue = b.medicationCount || 0
         } else if (sortField === "alertCount") {
           aValue = a.alerts?.length || 0 
           bValue = b.alerts?.length || 0
@@ -385,7 +386,7 @@ const PatientListTable = ({ searchTerm: externalSearchTerm }: PatientListTablePr
                       <div className="text-xs text-gray-500">{patient.email}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-500">{patient.currentMedications?.length || 0}</div>
+                      <div className="text-sm text-gray-500">{patient.medicationCount || 0}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
