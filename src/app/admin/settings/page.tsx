@@ -24,8 +24,6 @@ interface AdminPreferences {
   };
   timezone: string;
   language: string;
-  maxPatients: number;
-  autoAssignPatients: boolean;
 }
 
 export default function AdminSettingsPage() {
@@ -39,8 +37,6 @@ export default function AdminSettingsPage() {
     },
     timezone: "America/New_York",
     language: "en",
-    maxPatients: 50,
-    autoAssignPatients: false,
   });
 
   const [isSaving, setIsSaving] = useState(false);
@@ -223,49 +219,6 @@ export default function AdminSettingsPage() {
             <option value="es">Español</option>
             <option value="fr">Français</option>
           </select>
-        </div>
-
-        {/* Patient Management Settings */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-4 flex items-center">
-            <Users className="h-5 w-5 mr-2" />
-            Patient Management
-          </h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Maximum Number of Patients
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="1000"
-                value={preferences.maxPatients || 50}
-                onChange={(e) => {
-                  const value = parseInt(e.target.value);
-                  setPreferences(prev => ({ 
-                    ...prev, 
-                    maxPatients: isNaN(value) ? 50 : Math.min(Math.max(value, 1), 1000)
-                  }));
-                }}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <span>Auto-assign New Patients</span>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={preferences.autoAssignPatients}
-                  onChange={(e) => setPreferences(prev => ({ ...prev, autoAssignPatients: e.target.checked }))}
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-          </div>
         </div>
 
         {/* Save Button */}
