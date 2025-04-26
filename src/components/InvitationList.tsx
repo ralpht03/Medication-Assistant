@@ -11,39 +11,43 @@ interface Invitation {
   expiresAt: string;
 }
 
-export default function InvitationList() {
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+interface InvitationListProps {
+  invitations: Invitation[];
+  onInvitationClick: (invitation: Invitation) => void;
+  onRefresh: () => void;
+}
+
+export default function InvitationList({ invitations, onInvitationClick, onRefresh }: InvitationListProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    const fetchInvitations = async () => {
-      try {
-        const response = await fetch('/api/admin/sent-invitations');
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch invitations');
-        }
-        
+  const handleRemove = async (invitationId: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const response = await fetch('/api/admin/sent-invitations', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ invitationId }),
+      });
+
+      if (!response.ok) {
         const data = await response.json();
-        console.log("Received invitations data:", data); // Debug log
-        
-        if (data.invitations) {
-          setInvitations(data.invitations);
-        } else {
-          setInvitations([]);
-        }
-      } catch (err: any) {
-        console.error("Error fetching invitations:", err); // Debug log
-        setError(err.message || 'An error occurred');
-      } finally {
-        setIsLoading(false);
+        throw new Error(data.message || 'Failed to remove invitation');
       }
-    };
-    
-    fetchInvitations();
-  }, []);
+
+      // Refresh the list after successful removal
+      onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove invitation');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Safely filter invitations - avoid using properties that might be undefined
   const filteredInvitations = searchTerm 
@@ -147,99 +151,54 @@ export default function InvitationList() {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md">
-      <h2 className="text-lg sm:text-xl font-semibold p-4 border-b">Sent Invitations</h2>
-      
-      {/* Search bar */}
-      <div className="p-4 border-b">
-        {searchInput}
-      </div>
-      
-      {/* No results message */}
-      {filteredInvitations.length === 0 && searchTerm && (
-        <div className="p-4 text-center text-gray-500">
-          No invitations match your search
+    <div className="space-y-4">
+      {error && (
+        <div className="bg-red-50 text-red-500 p-3 rounded-md">
+          {error}
         </div>
       )}
-      
-      {/* Mobile view - cards */}
-      <div className="md:hidden">
-        {filteredInvitations.map((invitation, index) => (
-          <div key={getUniqueKey(invitation, index)} className="p-4 border-b">
-            <div className="flex justify-between items-center mb-2">
-              <div className="font-medium">{getEmail(invitation)}</div>
-              <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(invitation.status)}`}>
-                {(invitation.status || 'Unknown').charAt(0).toUpperCase() + (invitation.status || 'Unknown').slice(1)}
-              </span>
+      {invitations.map((invitation) => (
+        <div
+          key={invitation.id}
+          className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:border-blue-500 transition-colors"
+        >
+          <div className="flex justify-between items-start">
+            <div 
+              className="flex-1 cursor-pointer"
+              onClick={() => onInvitationClick(invitation)}
+            >
+              <h3 className="font-medium text-gray-900">
+                {invitation.patientName || 'Unnamed Patient'}
+              </h3>
+              <p className="text-sm text-gray-500">
+                {invitation.email}
+              </p>
+              <p className="text-sm text-gray-500">
+                Status: {invitation.status}
+              </p>
             </div>
-            <div className="text-sm text-gray-500 mb-1">
-              Role: {getRole(invitation)}
-            </div>
-            <div className="text-sm text-gray-500 mb-1">
-              Sent: {formatDate(invitation.createdAt)}
-            </div>
-            <div className="text-sm text-gray-500">
-              Expires: {formatDate(invitation.expiresAt)}
-            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRemove(invitation.id);
+              }}
+              disabled={isLoading}
+              className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? (
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+              ) : (
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              )}
+            </button>
           </div>
-        ))}
-      </div>
-      
-      {/* Desktop view - table */}
-      <div className="hidden md:block">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Email
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Role
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Sent Date
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Expires
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredInvitations.map((invitation, index) => (
-              <tr key={getUniqueKey(invitation, index)}>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">
-                    {getEmail(invitation)}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-500">
-                    {getRole(invitation)}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(invitation.status)}`}>
-                    {(invitation.status || 'Unknown').charAt(0).toUpperCase() + (invitation.status || 'Unknown').slice(1)}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-500">
-                    {formatDate(invitation.createdAt)}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-500">
-                    {formatDate(invitation.expiresAt)}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+        </div>
+      ))}
     </div>
   );
 }

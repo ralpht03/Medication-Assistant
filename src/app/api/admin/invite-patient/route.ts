@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
       inviteeEmail: patient.email as string,
       inviterEmail: admin.email as string,
       inviterName: `${admin.firstName} ${admin.lastName}`,
+      inviteeName: `${patient.firstName} ${patient.lastName}`,
       inviteeRole: 'patient',
       token,
       status: 'pending',
