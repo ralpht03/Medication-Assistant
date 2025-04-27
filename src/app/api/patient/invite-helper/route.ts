@@ -34,19 +34,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Get patient details
-    const helper = await usersService.getEntity('helper', helperId);
-    if (!helper) {
-      return NextResponse.json(
-        { message: 'Helper not found' },
-        { status: 404 }
-      );
-    }
-
-    // Get Patient details
     const patient = await usersService.getEntity('patient', patientId as string);
     if (!patient) {
       return NextResponse.json(
         { message: 'Patient not found' },
+        { status: 404 }
+      );
+    }
+
+    // Get helper details
+    const helper = await usersService.getEntity('helper', helperId);
+    if (!helper) {
+      return NextResponse.json(
+        { message: 'Helper not found' },
         { status: 404 }
       );
     }
@@ -62,46 +62,34 @@ export async function POST(request: NextRequest) {
 
     // Generate token
     const token = crypto.randomBytes(32).toString('hex');
-    
-    // Create new invitation
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    
-    const invitation = {
-      PartitionKey: 'INVITATION',
-      RowKey: crypto.randomUUID(),
-      inviterUserId: patientId as string,
+
+    // Create invitation
+    const invitation = await invitationService.createInvitation({
+      inviterUserId: patientId,
       inviterRole: 'patient',
-      inviteeEmail: helper.email as string,
       inviterEmail: patient.email as string,
       inviterName: `${patient.firstName} ${patient.lastName}`,
+      inviteeEmail: helper.email as string,
+      inviteeUserId: helper.RowKey,
       inviteeRole: 'helper',
       token,
       status: 'pending',
       message: message || '',
-      createdAt: now.toISOString(),
-      expiresAt: expiresAt.toISOString()
-    };
-    
-    await invitationService.createInvitation(invitation);
-    
-    // Send email
-    try {
-      await sendInvitationEmail({
-        to: helper.email as string,
-        inviterName: `${patient.firstName} ${patient.lastName}`,
-        inviterRole: 'patient',
-        inviteeRole: 'helper',
-        token,
-        message: message || ''
-      });
-    } catch (emailError) {
-      console.error('Error sending invitation email:', emailError);
-      // Continue even if email fails
-    }
-    
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    });
+
+    // Send invitation email
+    await sendInvitationEmail({
+      to: helper.email as string,
+      patientName: `${patient.firstName} ${patient.lastName}`,
+      message: message || '',
+      token
+    });
+
     return NextResponse.json({
-      message: 'Invitation sent successfully'
+      message: 'Invitation sent successfully',
+      invitation
     });
   } catch (error) {
     console.error('Error sending invitation:', error);

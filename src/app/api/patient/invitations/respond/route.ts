@@ -42,7 +42,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Get invitation
-    const invitation = await invitationService.getInvitationByRowKey(invitationId);
+    const invitation = await invitationService.getInvitationByRowKey(invitationId) as {
+      inviterUserId: string;
+      inviteeEmail: string;
+      inviteeUserId?: string;
+      status: string;
+    };
     if (!invitation) {
       return NextResponse.json(
         { message: 'Invitation not found' },
@@ -51,7 +56,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify invitation is for this patient
-    if (invitation.inviteeEmail !== patientEmail) {
+    if (invitation.inviteeEmail !== patientEmail || (invitation.inviteeUserId && invitation.inviteeUserId !== patientId)) {
       return NextResponse.json(
         { message: 'This invitation is not for you' },
         { status: 403 }

@@ -115,7 +115,9 @@ export default function HelperSettingsPage() {
       if (!userStr) throw new Error('User not found');
       
       const user = JSON.parse(userStr);
+      console.log('User object from localStorage:', user);
       const userId = user.id || user.RowKey;
+      console.log('Attempting to delete user with ID:', userId);
       
       const response = await fetch('/api/users/delete', {
         method: 'POST',
@@ -123,13 +125,10 @@ export default function HelperSettingsPage() {
         body: JSON.stringify({ userId })
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to delete account');
-      }
-
-      // Clear local storage and redirect to login
+      // Even if the user doesn't exist in the database, we should still clear localStorage and redirect
       localStorage.removeItem('user');
       window.location.href = '/login';
+      
     } catch (error) {
       console.error('Error deleting account:', error);
       setMessage({ type: 'error', text: 'Failed to delete account. Please try again.' });

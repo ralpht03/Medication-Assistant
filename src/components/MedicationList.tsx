@@ -1,4 +1,5 @@
 import { Check } from "lucide-react"
+import { useEffect } from "react"
 
 const medications = [
   { id: 1, name: "Aspirin", dosage: "100mg", time: "8:00 AM", taken: true },
@@ -7,6 +8,10 @@ const medications = [
 ]
 
 const MedicationList = () => {
+  useEffect(() => {
+    fetchMedications();
+  }, [fetchMedications]);
+
   return (
     <ul className="bg-white shadow overflow-hidden sm:rounded-md">
       {medications.map((medication) => (

@@ -67,8 +67,8 @@ export default function AvailableHelpersList() {
       
       toast.success('Invitation sent successfully');
       
-      // Remove the invited helper from the list
-      setHelpers(helpers.filter(h => h.id !== helperId));
+      // Refresh the available helpers list
+      await fetchAvailableHelpers();
       
       // Clear the message for this helper
       const updatedMessages = { ...messages };

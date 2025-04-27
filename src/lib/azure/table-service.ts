@@ -1,5 +1,5 @@
 // src/lib/azure/table-service.ts
-import { TableClient, AzureNamedKeyCredential } from "@azure/data-tables";
+import { TableClient, AzureNamedKeyCredential, odata } from "@azure/data-tables";
 
 export class AzureTableService {
   private tableClient: TableClient;
@@ -30,15 +30,24 @@ export class AzureTableService {
     return await this.tableClient.getEntity(partitionKey, rowKey);
   }
 
-  async queryEntities<T extends object>(query: string): Promise<T[]> {
-    const entities: T[] = [];
-    const iterator = this.tableClient.listEntities<T>({
-      queryOptions: { filter: query }
-    });
-    for await (const entity of iterator) {
-      entities.push(entity);
+  async queryEntities<T extends object>(query: string | ReturnType<typeof odata>): Promise<T[]> {
+    try {
+      console.log('Executing query:', query);
+      const entities: T[] = [];
+      const iterator = this.tableClient.listEntities<T>({
+        queryOptions: { filter: typeof query === 'string' ? query : query.toString() }
+      });
+      
+      for await (const entity of iterator) {
+        entities.push(entity);
+      }
+      
+      console.log(`Found ${entities.length} entities for query:`, query);
+      return entities;
+    } catch (error) {
+      console.error('Error querying entities:', error);
+      throw error;
     }
-    return entities;
   }
 
   async updateEntity(entity: any, mode: "Merge" | "Replace" = "Merge") {

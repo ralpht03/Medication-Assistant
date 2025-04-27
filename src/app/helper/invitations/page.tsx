@@ -2,14 +2,22 @@
 
 import { useState, useEffect } from 'react'
 import PageLayout from '@/components/PageLayout'
-import { Check, X } from 'lucide-react'
+import { Check, X, XCircle } from 'lucide-react'
 
 interface Invitation {
+  partitionKey: string
   rowKey: string
-  patientName: string
-  patientEmail: string
-  status: 'pending' | 'accepted' | 'rejected'
+  inviterUserId: string
+  inviterRole: string
+  inviterEmail: string
+  inviterName: string
+  inviteeEmail: string
+  inviteeRole: string
+  token: string
+  status: string
+  message: string
   createdAt: string
+  expiresAt: string
 }
 
 export default function HelperInvitationsPage() {
@@ -27,15 +35,18 @@ export default function HelperInvitationsPage() {
         }
 
         const user = JSON.parse(userStr)
-        const helperId = user.id || user.rowKey
+        const helperEmail = user.email
 
-        const response = await fetch(`/api/helper/invitations?helperId=${helperId}`)
+        const response = await fetch(`/api/helper/invitations`)
         if (!response.ok) {
           throw new Error('Failed to fetch invitations')
         }
 
         const data = await response.json()
-        setInvitations(data.invitations || [])
+        console.log('Received invitations data:', data);
+        // Ensure data is an array
+        const invitationsArray = Array.isArray(data) ? data : []
+        setInvitations(invitationsArray)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch invitations')
         console.error('Error fetching invitations:', err)
@@ -49,56 +60,76 @@ export default function HelperInvitationsPage() {
 
   const handleAccept = async (invitationId: string) => {
     try {
-      const response = await fetch('/api/invitations/accept', {
+      console.log('Accepting invitation with ID:', invitationId);
+      const requestBody = { 
+        invitationId: invitationId,
+        action: 'accept'
+      };
+      console.log('Request body:', requestBody);
+      
+      const response = await fetch(`/api/helper/invitations/respond`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ invitationId }),
+        body: JSON.stringify(requestBody),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to accept invitation')
+        const errorData = await response.json();
+        console.error('Error response:', errorData);
+        throw new Error(errorData.message || 'Failed to accept invitation');
       }
 
       // Update local state
       setInvitations(invitations.map(inv => 
         inv.rowKey === invitationId ? { ...inv, status: 'accepted' } : inv
-      ))
+      ));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to accept invitation')
+      console.error('Error in handleAccept:', err);
+      setError(err instanceof Error ? err.message : 'Failed to accept invitation');
     }
   }
 
   const handleReject = async (invitationId: string) => {
     try {
-      const response = await fetch('/api/invitations/reject', {
+      const response = await fetch(`/api/helper/invitations/respond`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ invitationId }),
+        body: JSON.stringify({ 
+          invitationId: invitationId,
+          action: 'decline'
+        }),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to reject invitation')
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to reject invitation');
       }
 
       // Update local state
       setInvitations(invitations.map(inv => 
         inv.rowKey === invitationId ? { ...inv, status: 'rejected' } : inv
-      ))
+      ));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reject invitation')
+      console.error('Error rejecting invitation:', err);
+      setError(err instanceof Error ? err.message : 'Failed to reject invitation');
     }
   }
 
   return (
     <PageLayout userType="helper" title="Patient Invitations">
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700">
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
           <div className="flex">
-            <p>{error}</p>
+            <div className="flex-shrink-0">
+              <XCircle className="h-5 w-5 text-red-400" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
           </div>
         </div>
       )}
@@ -135,56 +166,64 @@ export default function HelperInvitationsPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {invitations.map((invitation) => (
-                <tr key={invitation.rowKey}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{invitation.patientName}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-500">{invitation.patientEmail}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      invitation.status === 'accepted' 
-                        ? 'bg-green-100 text-green-800'
-                        : invitation.status === 'rejected'
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {invitation.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-500">
-                      {new Date(invitation.createdAt).toLocaleDateString()}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    {invitation.status === 'pending' && (
-                      <div className="flex justify-end space-x-2">
-                        <button
-                          onClick={() => handleAccept(invitation.rowKey)}
-                          className="text-green-600 hover:text-green-900"
-                          title="Accept"
-                        >
-                          <Check className="h-5 w-5" />
-                        </button>
-                        <button
-                          onClick={() => handleReject(invitation.rowKey)}
-                          className="text-red-600 hover:text-red-900"
-                          title="Reject"
-                        >
-                          <X className="h-5 w-5" />
-                        </button>
+              {invitations.map((invitation) => {
+                console.log('Invitation data:', invitation);
+                return (
+                  <tr key={invitation.rowKey}>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">{invitation.inviterName}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-500">{invitation.inviterEmail}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        invitation.status === 'accepted' 
+                          ? 'bg-green-100 text-green-800'
+                          : invitation.status === 'rejected'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {invitation.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-500">
+                        {new Date(invitation.createdAt).toLocaleDateString()}
                       </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      {invitation.status === 'pending' && (
+                        <>
+                          <button
+                            onClick={() => handleAccept(invitation.rowKey)}
+                            className="inline-flex items-center justify-center p-2 rounded-full text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 mr-2"
+                            title="Accept invitation"
+                          >
+                            <Check className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleReject(invitation.rowKey)}
+                            className="inline-flex items-center justify-center p-2 rounded-full text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                            title="Reject invitation"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
+                      {invitation.status !== 'pending' && (
+                        <span className="text-gray-500">
+                          {invitation.status === 'accepted' ? 'Accepted' : 'Declined'}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
     </PageLayout>
   )
-} 
+}

@@ -208,3 +208,16 @@ export interface DatabaseSchema {
   medications: Medication[];
   prescriptions: Prescription[];
 }
+
+export interface Notification {
+  PartitionKey: string // userId
+  RowKey: string // notificationId
+  type: 'info' | 'warning' | 'error'
+  message: string
+  createdAt: string
+  read: boolean
+  isAdminInvite?: boolean
+  helperName?: string
+  actorId?: string
+  status?: 'accepted' | 'declined'
+}

@@ -3,6 +3,7 @@ import { InvitationService } from '@/lib/azure/invitation-service';
 import { AzureTableService } from '@/lib/azure/table-service';
 import { getSession } from '@/lib/auth';
 import { TableClient, odata } from '@azure/data-tables';
+import { createHelperAcceptanceNotification } from '@/lib/patient';
 
 const invitationService = new InvitationService();
 const usersService = new AzureTableService('Users');
@@ -87,7 +88,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Get invitation
-    const invitation = await invitationService.getInvitationByRowKey(invitationId);
+    const invitation = await invitationService.getInvitationByRowKey(invitationId) as {
+      inviterUserId: string;
+      inviteeEmail: string;
+      inviteeUserId?: string;
+      status: string;
+    };
     if (!invitation) {
       return NextResponse.json(
         { message: 'Invitation not found' },
@@ -96,7 +102,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify invitation is for this helper
-    if (invitation.inviteeEmail !== helperEmail) {
+    if (invitation.inviteeEmail !== helperEmail || (invitation.inviteeUserId && invitation.inviteeUserId !== helperId)) {
       return NextResponse.json(
         { message: 'This invitation is not for you' },
         { status: 403 }
@@ -116,52 +122,41 @@ export async function POST(request: NextRequest) {
       // Update invitation status
       await invitationService.updateInvitationStatus(invitationId, 'accepted');
       
-      // Link patient to helper
-      const patientId = invitation.inviterUserId as string;
-      
-      // Get patient using the correct partition key
-      const patientFilter = odata`PartitionKey eq 'patient' and RowKey eq ${patientId}`;
-      let patientUser = null;
-      
-      try {
-        const patientEntities = usersTableClient.listEntities({ queryOptions: { filter: patientFilter } });
-        
-        for await (const entity of patientEntities) {
-          patientUser = entity;
-          break;
-        }
-      } catch (error) {
-        console.error(`Error finding patient ${patientId}:`, error);
-        return NextResponse.json({ error: 'Failed to find patient' }, { status: 404 });
-      }
-
-      if (!patientUser) {
-        return NextResponse.json({ error: 'Patient not found' }, { status: 404 });
-      }
+      // Link helper to patient
+      const patientId = invitation.inviterUserId;
+      const patient = await usersService.getEntity('patient', patientId);
       
       // Update patient's linkedHelpers array
-      const linkedHelpers = patientUser.linkedHelpers ? JSON.parse(patientUser.linkedHelpers as string) : [];
+      const linkedHelpers = patient.linkedHelpers ? JSON.parse(patient.linkedHelpers as string) : [];
       if (!linkedHelpers.includes(helperId)) {
         linkedHelpers.push(helperId);
-        await usersTableClient.updateEntity({
+        await usersService.updateEntity({
           partitionKey: 'patient',
           rowKey: patientId,
           linkedHelpers: JSON.stringify(linkedHelpers)
         }, "Merge");
       }
-      
+
       // Update helper's linkedPatients array
       const linkedPatients = helperUser.linkedPatients ? JSON.parse(helperUser.linkedPatients as string) : [];
       if (!linkedPatients.includes(patientId)) {
         linkedPatients.push(patientId);
-        const helperUpdate = {
+        await usersService.updateEntity({
           partitionKey: 'helper',
           rowKey: helperId,
           linkedPatients: JSON.stringify(linkedPatients)
-        };
-        console.log('Updating helper with:', helperUpdate); // Debug log
-        await usersTableClient.updateEntity(helperUpdate, "Merge");
+        }, "Merge");
       }
+
+      // Create notification for patient
+      console.log('Creating notification for patient:', {
+        patientId,
+        helperName: `${helperUser.firstName} ${helperUser.lastName}`,
+        status: 'accepted',
+        helperId
+      });
+      await createHelperAcceptanceNotification(patientId, `${helperUser.firstName} ${helperUser.lastName}`, 'accepted', helperId);
+      console.log('Notification created successfully');
       
       return NextResponse.json({
         message: 'Invitation accepted successfully'

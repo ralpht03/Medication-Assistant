@@ -59,27 +59,12 @@ const NotificationBadge = ({
         </div>
       )}
 
-      <div className="ml-3 w-0 flex-1">
+      <div className="ml-3 flex-1 min-w-0">
         <p className="text-sm font-medium">{message}</p>
         {timestamp && (
           <p className="mt-1 text-sm opacity-75">{timestamp}</p>
         )}
       </div>
-
-      {onClick && (
-        <div className="ml-4 flex-shrink-0 flex">
-          <button
-            className="inline-flex text-sm opacity-75 hover:opacity-100 focus:outline-none"
-            onClick={(e) => {
-              e.stopPropagation()
-              onClick()
-            }}
-          >
-            <span className="sr-only">View notification</span>
-            <Bell className="h-5 w-5" />
-          </button>
-        </div>
-      )}
     </div>
   )
 }
