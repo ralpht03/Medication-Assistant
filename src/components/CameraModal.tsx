@@ -262,6 +262,18 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, medication, 
                   hideControls={verificationComplete || bypassVerification}
                 />
                 
+                {/* Bypass button - always available */}
+                {!verificationComplete && !bypassVerification && !showPillCounter && (
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      onClick={handleBypassVerification}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors flex items-center"
+                    >
+                      <span>Skip Pill Identification</span>
+                    </button>
+                  </div>
+                )}
+                
                 {verificationComplete && verificationResult && (
                   <div className={`mt-4 p-4 ${verificationResult.pill_name.toLowerCase() === medication?.name.toLowerCase() 
                     ? 'bg-green-50 border-green-200' 
