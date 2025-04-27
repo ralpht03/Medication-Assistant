@@ -5,6 +5,7 @@ import bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
 import { Medications } from "./types";
+import { InvitationService } from './azure/invitation-service';
 
 config();
 
@@ -179,11 +180,17 @@ export class UserService {
   private adminPatientRelationsTableClient: TableClient;
   private saltRounds = 10;
   private jwtSecret: string;
+  private medicationsTableClient: TableClient;
+  private verificationLogsTableClient: TableClient;
+  private notificationsTableClient: TableClient;
 
   constructor() {
     this.usersTableClient = createTableClient(USERS_TABLE);
     this.patientsTableClient = createTableClient(PATIENTS_TABLE);
     this.adminPatientRelationsTableClient = createTableClient(ADMIN_PATIENT_RELATIONS_TABLE);
+    this.medicationsTableClient = createTableClient('Medications');
+    this.verificationLogsTableClient = createTableClient('VerificationLogs');
+    this.notificationsTableClient = createTableClient('Notifications');
     
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
@@ -579,6 +586,118 @@ export class UserService {
       return admins;
     } catch (error) {
       console.error('Error getting admins by patient ID:', error);
+      throw error;
+    }
+  }
+
+  async unassignPatientFromAdmin(patientId: string, adminId: string): Promise<void> {
+    try {
+      // First, verify that the admin exists and is actually an admin
+      let admin: AzureTableUser | null = null;
+      try {
+        admin = await this.usersTableClient.getEntity<AzureTableUser>('USER', adminId);
+      } catch (error: any) {
+        if (error.statusCode === 404) {
+          throw new Error(`Admin with ID ${adminId} not found`);
+        }
+        throw error;
+      }
+
+      if (admin.role !== 'admin') {
+        throw new Error(`User with ID ${adminId} is not an admin`);
+      }
+
+      // Next, verify that the patient exists and is actually a patient
+      let patient: AzureTablePatient | null = null;
+      try {
+        patient = await this.patientsTableClient.getEntity<AzureTablePatient>('PATIENT', patientId);
+      } catch (error: any) {
+        if (error.statusCode === 404) {
+          throw new Error(`Patient with ID ${patientId} not found`);
+        }
+        throw error;
+      }
+
+      // Get all relations for this admin-patient pair
+      const filter = odata`PartitionKey eq ${adminId} and patientId eq ${patientId}`;
+      const relations = this.adminPatientRelationsTableClient.listEntities({ queryOptions: { filter } });
+      
+      // Delete all relations
+      for await (const relation of relations) {
+        await this.adminPatientRelationsTableClient.deleteEntity(relation.partitionKey, relation.rowKey);
+      }
+
+      // Update the patient's adminIds array
+      const adminIds = JSON.parse(patient.adminIds || '[]');
+      const updatedAdminIds = adminIds.filter((id: string) => id !== adminId);
+      
+      await this.patientsTableClient.updateEntity({
+        partitionKey: 'PATIENT',
+        rowKey: patientId,
+        adminIds: JSON.stringify(updatedAdminIds)
+      }, 'Merge');
+
+      // Update the admin's linkedPatients array
+      const linkedPatients = JSON.parse(admin.linkedPatients || '[]');
+      const updatedLinkedPatients = linkedPatients.filter((id: string) => id !== patientId);
+      
+      await this.usersTableClient.updateEntity({
+        partitionKey: 'USER',
+        rowKey: adminId,
+        linkedPatients: JSON.stringify(updatedLinkedPatients)
+      }, 'Merge');
+    } catch (error) {
+      console.error('Error unassigning patient from admin:', error);
+      throw error;
+    }
+  }
+
+  async deleteUser(userId: string): Promise<void> {
+    try {
+      // First, find the user across different role partitions
+      let user = null;
+      const partitions = ['admin', 'patient', 'helper'];
+      
+      for (const partition of partitions) {
+        try {
+          user = await this.usersTableClient.getEntity(partition, userId);
+          if (user) break;
+        } catch (error) {
+          // Continue to next partition if user not found
+          continue;
+        }
+      }
+      
+      if (!user) {
+        throw new Error(`User with ID ${userId} not found`);
+      }
+
+      // Delete the user entity
+      await this.usersTableClient.deleteEntity(user.partitionKey, user.rowKey);
+
+      // Delete any invitations where user is the inviter or invitee
+      const invitationService = new InvitationService();
+      const invitations = await invitationService.queryEntities(
+        `inviterUserId eq '${userId}' or inviteeUserId eq '${userId}'`
+      );
+      
+      for (const invitation of invitations) {
+        await invitationService.deleteEntity(invitation.partitionKey, invitation.rowKey);
+      }
+
+      // Clean up notifications
+      const notifications = await this.notificationsTableClient.listEntities({
+        queryOptions: {
+          filter: odata`recipientId eq '${userId}' or actorId eq '${userId}'`
+        }
+      });
+      
+      for await (const notification of notifications) {
+        await this.notificationsTableClient.deleteEntity(notification.partitionKey, notification.rowKey);
+      }
+
+    } catch (error) {
+      console.error('Error deleting user:', error);
       throw error;
     }
   }

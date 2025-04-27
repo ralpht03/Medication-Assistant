@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Pill, Clock, Calendar, AlertCircle, Loader2, Search } from 'lucide-react';
+import { Pill, Clock, Calendar, AlertCircle, Loader2, Search, Edit2, Trash2 } from 'lucide-react';
 import PageLayout from '@/components/PageLayout';
 import { Medication } from '@/lib/azure-tables-types';
 import { format } from 'date-fns';
@@ -19,6 +19,8 @@ export default function AdminMedicationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedPatients, setExpandedPatients] = useState<Set<string>>(new Set());
+  const [editingMedication, setEditingMedication] = useState<{ patientId: string; medication: Medication } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -94,6 +96,105 @@ export default function AdminMedicationsPage() {
     });
   };
 
+  const handleEditMedication = async (patientId: string, medication: Medication) => {
+    setEditingMedication({ patientId, medication });
+  };
+
+  const handleDeleteMedication = async (patientId: string, medicationId: string) => {
+    if (!confirm('Are you sure you want to delete this medication?')) return;
+    
+    try {
+      setIsDeleting(true);
+      const userStr = localStorage.getItem('user');
+      if (!userStr) {
+        router.push('/login');
+        return;
+      }
+
+      const response = await fetch('/api/medications', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'user': userStr
+        },
+        body: JSON.stringify({
+          patientId,
+          medicationId
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete medication');
+      }
+
+      // Refresh medications list
+      const fetchResponse = await fetch('/api/admin/medications', {
+        headers: {
+          'user': userStr
+        }
+      });
+      
+      if (!fetchResponse.ok) {
+        throw new Error('Failed to fetch updated medications');
+      }
+      
+      const data = await fetchResponse.json();
+      setPatientMedications(data || []);
+    } catch (err) {
+      console.error('Error deleting medication:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred while deleting medication');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleUpdateMedication = async (updatedMedication: Medication) => {
+    if (!editingMedication) return;
+    
+    try {
+      const userStr = localStorage.getItem('user');
+      if (!userStr) {
+        router.push('/login');
+        return;
+      }
+
+      const response = await fetch('/api/medications', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'user': userStr
+        },
+        body: JSON.stringify({
+          patientId: editingMedication.patientId,
+          medicationId: updatedMedication.rowKey,
+          medication: updatedMedication
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update medication');
+      }
+
+      // Refresh medications list
+      const fetchResponse = await fetch('/api/admin/medications', {
+        headers: {
+          'user': userStr
+        }
+      });
+      
+      if (!fetchResponse.ok) {
+        throw new Error('Failed to fetch updated medications');
+      }
+      
+      const data = await fetchResponse.json();
+      setPatientMedications(data || []);
+      setEditingMedication(null);
+    } catch (err) {
+      console.error('Error updating medication:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred while updating medication');
+    }
+  };
+
   if (loading) {
     return (
       <PageLayout title="Medications" userType="admin">
@@ -156,34 +257,117 @@ export default function AdminMedicationsPage() {
                       <div className="space-y-4">
                         {patientMed.medications.map((medication) => (
                           <div key={medication.rowKey} className="border rounded p-4">
-                            <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                <p className="font-semibold">Medication Name:</p>
-                                <p>{medication.name}</p>
-                              </div>
-                              <div>
-                                <p className="font-semibold">Dosage:</p>
-                                <p>{medication.dosage}</p>
-                              </div>
-                              <div>
-                                <p className="font-semibold">Frequency:</p>
-                                <p>{medication.frequency}</p>
-                              </div>
-                              <div>
-                                <p className="font-semibold">Start Date:</p>
-                                <p>{medication.startDate ? format(new Date(medication.startDate), 'MM/dd/yyyy') : 'Not specified'}</p>
-                              </div>
-                              {medication.endDate && (
-                                <div>
-                                  <p className="font-semibold">End Date:</p>
-                                  <p>{format(new Date(medication.endDate), 'MM/dd/yyyy')}</p>
+                            {editingMedication?.medication.rowKey === medication.rowKey ? (
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700">Medication Name</label>
+                                    <input
+                                      type="text"
+                                      value={editingMedication.medication.name}
+                                      readOnly
+                                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700">Dosage</label>
+                                    <input
+                                      type="text"
+                                      value={editingMedication.medication.dosage}
+                                      onChange={(e) => setEditingMedication({
+                                        ...editingMedication,
+                                        medication: { ...editingMedication.medication, dosage: e.target.value }
+                                      })}
+                                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700">Frequency</label>
+                                    <input
+                                      type="text"
+                                      value={editingMedication.medication.frequency}
+                                      onChange={(e) => setEditingMedication({
+                                        ...editingMedication,
+                                        medication: { ...editingMedication.medication, frequency: e.target.value }
+                                      })}
+                                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700">Instructions</label>
+                                    <input
+                                      type="text"
+                                      value={editingMedication.medication.instructions || ''}
+                                      onChange={(e) => setEditingMedication({
+                                        ...editingMedication,
+                                        medication: { ...editingMedication.medication, instructions: e.target.value }
+                                      })}
+                                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    />
+                                  </div>
                                 </div>
-                              )}
-                              <div>
-                                <p className="font-semibold">Instructions:</p>
-                                <p>{medication.instructions || 'No instructions provided'}</p>
+                                <div className="flex justify-end space-x-2">
+                                  <button
+                                    onClick={() => setEditingMedication(null)}
+                                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={() => handleUpdateMedication(editingMedication.medication)}
+                                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                                  >
+                                    Save
+                                  </button>
+                                </div>
                               </div>
-                            </div>
+                            ) : (
+                              <>
+                                <div className="flex justify-end space-x-2 mb-4">
+                                  <button
+                                    onClick={() => handleEditMedication(patientMed.patientId, medication)}
+                                    className="p-1 text-blue-600 hover:text-blue-800"
+                                  >
+                                    <Edit2 className="w-5 h-5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteMedication(patientMed.patientId, medication.rowKey)}
+                                    className="p-1 text-red-600 hover:text-red-800"
+                                    disabled={isDeleting}
+                                  >
+                                    <Trash2 className="w-5 h-5" />
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <p className="font-semibold">Medication Name:</p>
+                                    <p>{medication.name}</p>
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold">Dosage:</p>
+                                    <p>{medication.dosage}</p>
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold">Frequency:</p>
+                                    <p>{medication.frequency}</p>
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold">Start Date:</p>
+                                    <p>{medication.startDate ? format(new Date(medication.startDate), 'MM/dd/yyyy') : 'Not specified'}</p>
+                                  </div>
+                                  {medication.endDate && (
+                                    <div>
+                                      <p className="font-semibold">End Date:</p>
+                                      <p>{format(new Date(medication.endDate), 'MM/dd/yyyy')}</p>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <p className="font-semibold">Instructions:</p>
+                                    <p>{medication.instructions || 'No instructions provided'}</p>
+                                  </div>
+                                </div>
+                              </>
+                            )}
                           </div>
                         ))}
                       </div>

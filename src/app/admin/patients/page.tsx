@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import PageLayout from '@/components/PageLayout';
 import { toast } from 'react-hot-toast';
-import { Search } from 'lucide-react';
+import { Search, Trash2 } from 'lucide-react';
 
 interface Patient {
   id: string;
@@ -32,6 +32,7 @@ export default function AdminPatientsPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isUnassigning, setIsUnassigning] = useState(false);
 
   useEffect(() => {
     fetchPatients();
@@ -71,6 +72,45 @@ export default function AdminPatientsPage() {
       toast.error('Failed to load patients');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUnassignPatient = async (patientId: string) => {
+    if (!confirm('Are you sure you want to unassign this patient?')) return;
+    
+    try {
+      setIsUnassigning(true);
+      const userStr = localStorage.getItem('user');
+      if (!userStr) {
+        throw new Error('User not found in localStorage');
+      }
+
+      const user = JSON.parse(userStr);
+      const adminId = user.rowKey || user.id;
+
+      const response = await fetch('/api/admin/patients/unassign', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          adminId,
+          patientId
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to unassign patient');
+      }
+
+      toast.success('Patient unassigned successfully');
+      fetchPatients(); // Refresh the list
+    } catch (error) {
+      console.error('Error unassigning patient:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to unassign patient');
+    } finally {
+      setIsUnassigning(false);
     }
   };
 
@@ -147,6 +187,9 @@ export default function AdminPatientsPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -192,6 +235,15 @@ export default function AdminPatientsPage() {
                       <span className={getStatusBadge(patient.status)}>
                         {patient.status.charAt(0).toUpperCase() + patient.status.slice(1)}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <button
+                        onClick={() => handleUnassignPatient(patient.id)}
+                        disabled={isUnassigning}
+                        className="p-1 text-red-600 hover:text-red-800 disabled:opacity-50"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
                     </td>
                   </tr>
                 ))}

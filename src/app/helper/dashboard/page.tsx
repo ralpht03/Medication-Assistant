@@ -29,13 +29,19 @@ export default function HelperDashboardPage() {
 
         // Fetch data from existing APIs
         const [patientsResponse, alertsResponse, invitationsResponse] = await Promise.all([
-          fetch(`/api/helper/patients?helperId=${helperId}`),
+          fetch(`/api/helper/patients`),
           fetch(`/api/alerts?userId=${helperId}&role=helper&status=unread`),
-          fetch(`/api/helper/invitations?helperId=${helperId}&accepted=false`)
+          fetch(`/api/helper/invitations`)
         ])
 
-        if (!patientsResponse.ok || !alertsResponse.ok || !invitationsResponse.ok) {
-          throw new Error('Failed to fetch data')
+        if (!patientsResponse.ok) {
+          throw new Error(`Failed to fetch patients: ${patientsResponse.status} ${patientsResponse.statusText}`)
+        }
+        if (!alertsResponse.ok) {
+          throw new Error(`Failed to fetch alerts: ${alertsResponse.status} ${alertsResponse.statusText}`)
+        }
+        if (!invitationsResponse.ok) {
+          throw new Error(`Failed to fetch invitations: ${invitationsResponse.status} ${invitationsResponse.statusText}`)
         }
 
         const [patients, alerts, invitations] = await Promise.all([

@@ -9,7 +9,8 @@ import {
   Clock,
   Smartphone,
   Mail,
-  Phone
+  Phone,
+  Trash2
 } from 'lucide-react';
 
 interface UserPreferences {
@@ -35,6 +36,7 @@ export default function SettingsPage() {
 
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -93,6 +95,38 @@ export default function SettingsPage() {
       setMessage({ type: 'error', text: 'Failed to save settings. Please try again.' });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!confirm('Are you sure you want to delete your account? This action cannot be undone.')) return;
+    
+    try {
+      setIsDeleting(true);
+      const userStr = localStorage.getItem('user');
+      if (!userStr) throw new Error('User not found');
+      
+      const user = JSON.parse(userStr);
+      const userId = user.id || user.RowKey;
+      
+      const response = await fetch('/api/users/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete account');
+      }
+
+      // Clear local storage and redirect to login
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      setMessage({ type: 'error', text: 'Failed to delete account. Please try again.' });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -197,6 +231,24 @@ export default function SettingsPage() {
             <option value="es">Español</option>
             <option value="fr">Français</option>
           </select>
+        </div>
+
+        {/* Delete Account Section */}
+        <div className="bg-white rounded-lg shadow-md p-6 border border-red-200">
+          <h2 className="text-xl font-semibold mb-4 flex items-center text-red-600">
+            <Trash2 className="h-5 w-5 mr-2" />
+            Delete Account
+          </h2>
+          <p className="text-gray-600 mb-4">
+            Once you delete your account, there is no going back. Please be certain.
+          </p>
+          <button
+            onClick={handleDeleteAccount}
+            disabled={isDeleting}
+            className="px-4 py-2 rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+          >
+            {isDeleting ? 'Deleting...' : 'Delete Account'}
+          </button>
         </div>
 
         {/* Save Button */}

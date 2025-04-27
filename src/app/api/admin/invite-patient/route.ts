@@ -3,6 +3,7 @@ import { InvitationService } from '@/lib/azure/invitation-service';
 import { AzureTableService } from '@/lib/azure/table-service';
 import { getSession } from '@/lib/auth';
 import { sendInvitationEmail } from '@/lib/email-service';
+import { createAdminInvitationNotification } from '@/lib/patient';
 import crypto from 'crypto';
 
 const invitationService = new InvitationService();
@@ -59,11 +60,10 @@ export async function POST(request: NextRequest) {
     const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     
     const invitation = {
-      PartitionKey: 'INVITATION',
-      RowKey: crypto.randomUUID(),
       inviterUserId: adminId as string,
       inviterRole: 'admin',
       inviteeEmail: patient.email as string,
+      inviteeUserId: patient.RowKey,
       inviterEmail: admin.email as string,
       inviterName: `${admin.firstName} ${admin.lastName}`,
       inviteeName: `${patient.firstName} ${patient.lastName}`,
@@ -76,6 +76,9 @@ export async function POST(request: NextRequest) {
     };
     
     await invitationService.createInvitation(invitation);
+    
+    // Create notification for patient
+    await createAdminInvitationNotification(patientId, `${admin.firstName} ${admin.lastName}`);
     
     // Send email
     try {

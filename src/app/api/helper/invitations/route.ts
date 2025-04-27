@@ -63,7 +63,8 @@ export async function GET(request: NextRequest) {
     const helperId = helperUser.rowKey as string;
     
     // Get all invitations for this helper
-    const invitations = await invitationService.getInvitationsByInvitee(helperEmail);
+    const invitations = await invitationService.getInvitationsByInvitee(helperEmail) as Invitation[];
+    console.log('Fetched invitations:', invitations);
 
     // Get linked patients from helper's record
     const linkedPatients = JSON.parse((helperUser.linkedPatients as string) || '[]');
@@ -100,67 +101,11 @@ export async function GET(request: NextRequest) {
     // Filter out any null entries from failed patient lookups
     const validLinkedPatients = linkedPatientsDetails.filter(patient => patient !== null);
 
-    // Create a map to track accepted invitations by patientId
-    const acceptedInvitationsMap = new Map();
-    
-    // First pass: identify all accepted invitations
-    invitations.forEach(inv => {
-      if (inv.status === 'accepted') {
-        acceptedInvitationsMap.set(inv.inviterUserId, true);
-      }
-    });
+    // Filter invitations to only include pending ones
+    const pendingInvitations = invitations.filter(inv => inv.status === 'pending');
 
-    // Filter invitations:
-    // 1. Must be pending
-    // 2. Must be from an patient
-    // 3. Must not have an accepted invitation from the same patient
-    const pendingInvitations = invitations.filter(inv => 
-      inv.status === 'pending' && 
-      inv.inviterRole === 'patient' &&
-      !acceptedInvitationsMap.has(inv.inviterUserId)
-    );
-    
-    // Get patient details for each invitation
-    const formattedInvitations = await Promise.all(pendingInvitations.map(async (inv) => {
-      // Get patient using the correct partition key
-      const patientFilter = odata`PartitionKey eq 'patient' and RowKey eq ${inv.inviterUserId}`;
-      let patientUser = null;
-      
-      try {
-        const patientEntities = usersTableClient.listEntities({ queryOptions: { filter: patientFilter } });
-        
-        for await (const entity of patientEntities) {
-          patientUser = entity;
-          break;
-        }
-      } catch (error) {
-        console.error(`Error finding patient ${inv.inviterUserId}:`, error);
-        return null;
-      }
-
-      if (!patientUser) {
-        console.error(`Patient ${inv.inviterUserId} not found`);
-        return null;
-      }
-      
-      return {
-        id: inv.rowKey,
-        patientId: inv.inviterUserId,
-        patientName: `${patientUser.firstName} ${patientUser.lastName}`,
-        message: inv.message,
-        createdAt: inv.createdAt,
-        expiresAt: inv.expiresAt,
-        token: inv.token
-      };
-    }));
-
-    // Filter out any null entries from failed patient lookups
-    const validInvitations = formattedInvitations.filter(inv => inv !== null);
-
-    return NextResponse.json({
-      invitations: validInvitations,
-      linkedPatients: validLinkedPatients
-    });
+    // Return only pending invitations
+    return NextResponse.json(pendingInvitations);
   } catch (error) {
     console.error('Error fetching helper invitations:', error);
     return NextResponse.json(

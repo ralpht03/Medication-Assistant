@@ -1,19 +1,23 @@
 import { useState } from 'react'
-import { Bell, X } from 'lucide-react'
+import { Bell, X, ArrowRight } from 'lucide-react'
 import NotificationBadge from './shared/NotificationBadge'
+import { useRouter } from 'next/navigation'
 
 interface Notification {
-  id: string | number
+  id: string
   type: 'info' | 'warning' | 'error'
   message: string
   timestamp: string
   read: boolean
+  isAdminInvite?: boolean
+  helperName?: string
+  status?: 'accepted' | 'declined'
 }
 
 interface NotificationsPanelProps {
   notifications: Notification[]
-  onNotificationClick?: (notificationId: string | number) => void
-  onDismiss?: (notificationId: string | number) => void
+  onNotificationClick?: (notificationId: string) => void
+  onDismiss?: (notificationId: string) => void
   className?: string
 }
 
@@ -23,7 +27,16 @@ const NotificationsPanel = ({
   onDismiss,
   className = ''
 }: NotificationsPanelProps) => {
+  const router = useRouter()
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
+
+  const handleNotificationAction = (notification: Notification) => {
+    if (notification.isAdminInvite) {
+      router.push('/patient/invitations')
+      return
+    }
+    onNotificationClick?.(notification.id)
+  }
 
   const filteredNotifications = notifications.filter(
     notification => filter === 'all' || !notification.read
@@ -75,31 +88,63 @@ const NotificationsPanel = ({
         </div>
       ) : (
         <div className="space-y-6">
-          {groupedNotifications.map(group => (
-            <div key={group.type}>
+          {groupedNotifications.map((group, groupIndex) => (
+            <div key={`group-${groupIndex}-${group.type}`}>
               <h3 className="text-sm font-medium text-gray-500 mb-3 uppercase">
                 {group.type.charAt(0).toUpperCase() + group.type.slice(1)}
               </h3>
               <div className="space-y-3">
-                {group.notifications.map(notification => (
-                  <div key={notification.id} className="relative">
-                    <NotificationBadge
-                      type={notification.type}
-                      message={notification.message}
-                      timestamp={notification.timestamp}
-                      onClick={() => onNotificationClick?.(notification.id)}
-                    />
-                    {onDismiss && (
-                      <button
-                        onClick={() => onDismiss(notification.id)}
-                        className="absolute top-2 right-2 p-1 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                      >
-                        <X className="h-4 w-4 text-gray-500" />
-                        <span className="sr-only">Dismiss</span>
-                      </button>
-                    )}
-                  </div>
-                ))}
+                {group.notifications.map((notification, index) => {
+                  console.log('Rendering notification:', {
+                    id: notification.id,
+                    type: notification.type,
+                    isAdminInvite: notification.isAdminInvite,
+                    fullObject: notification
+                  })
+                  
+                  if (!notification.id) {
+                    console.error('Notification missing ID:', notification)
+                    return null
+                  }
+                  
+                  return (
+                    <div key={`notification-${notification.id}-${index}`} className="relative">
+                      <NotificationBadge
+                        type={notification.type}
+                        message={notification.message}
+                        timestamp={notification.timestamp}
+                        onClick={notification.isAdminInvite ? () => handleNotificationAction(notification) : undefined}
+                      />
+                      {notification.isAdminInvite && (
+                        <div className="absolute top-2 right-2">
+                          <button
+                            onClick={() => router.push('/patient/invitations')}
+                            className="p-1 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                          >
+                            <ArrowRight className="h-4 w-4 text-gray-500" />
+                            <span className="sr-only">View Invitations</span>
+                          </button>
+                        </div>
+                      )}
+                      {onDismiss && !notification.isAdminInvite && (
+                        <button
+                          onClick={() => {
+                            console.log('Dismissing notification with ID:', notification.id, 'Full object:', notification)
+                            if (!notification.id) {
+                              console.error('Notification ID is missing in:', notification)
+                              return
+                            }
+                            onDismiss(notification.id)
+                          }}
+                          className="absolute top-2 right-2 p-1 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        >
+                          <X className="h-4 w-4 text-gray-500" />
+                          <span className="sr-only">Dismiss</span>
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
           ))}

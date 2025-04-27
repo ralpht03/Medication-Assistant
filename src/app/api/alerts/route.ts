@@ -61,7 +61,12 @@ export async function GET(request: Request) {
     let filter = '';
     if (role === 'admin' || role === 'helper') {
       // For admin/helper, get alerts where partitionKey is in linkedIds
-      filter = linkedIds.map(id => `PartitionKey eq '${id}'`).join(' or ');
+      if (linkedIds.length > 0) {
+        filter = linkedIds.map(id => `PartitionKey eq '${id}'`).join(' or ');
+      } else {
+        // If no linked patients, return empty array
+        return NextResponse.json([]);
+      }
     } else {
       // For patient, get their own alerts
       filter = `PartitionKey eq '${userId}'`;

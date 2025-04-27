@@ -112,7 +112,13 @@ export default function HelperPatientDashboard({ params }: { params: Promise<{ p
       if (!userStr || !selectedMedication) return
 
       const user = JSON.parse(userStr)
-      const helperId = user.rowKey
+      // Get the helper ID from the correct field, matching fetchPatientData
+      const helperId = user.rowKey || user.id
+      if (!helperId) {
+        throw new Error('Helper ID not found in user data')
+      }
+      console.log('Using helper ID for verification:', helperId)
+      console.log('Selected medication:', selectedMedication)
 
       const response = await fetch('/api/helper/medication/verify', {
         method: 'POST',
@@ -128,7 +134,13 @@ export default function HelperPatientDashboard({ params }: { params: Promise<{ p
       })
 
       if (!response.ok) {
-        throw new Error('Failed to verify medication')
+        const errorData = await response.json().catch(() => ({}))
+        console.error('Verification failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        })
+        throw new Error(`Failed to verify medication: ${response.status} ${response.statusText}`)
       }
 
       // Refresh medications list
@@ -141,6 +153,7 @@ export default function HelperPatientDashboard({ params }: { params: Promise<{ p
       setShowVerification(false)
       setSelectedMedication(null)
     } catch (err) {
+      console.error('Error in handleVerificationComplete:', err)
       setError(err instanceof Error ? err.message : 'Failed to verify medication')
     }
   }
