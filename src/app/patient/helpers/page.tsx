@@ -98,7 +98,7 @@ export default function PatientHelpersPage() {
         <div className="text-center py-8">
           <p className="text-gray-500">You don't have any helpers yet</p>
           <p className="text-sm text-gray-400 mt-1">
-            You can invite helpers from the "Invite Helper" page
+            You can invite helpers from the "Invitations" page
           </p>
         </div>
       ) : (

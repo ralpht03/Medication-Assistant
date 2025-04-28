@@ -432,7 +432,7 @@ export class UserService {
         adminIds.push(adminId);
         
         const patientUpdate = {
-          partitionKey: 'PATIENT',
+          partitionKey: 'patient',
           rowKey: patientId,
           adminIds: JSON.stringify(adminIds),
           updatedAt: now
@@ -467,7 +467,7 @@ export class UserService {
         const updatedAdminIds = adminIds.filter((id: string) => id !== adminId);
         
         const patientUpdate = {
-          partitionKey: 'PATIENT',
+          partitionKey: 'patient',
           rowKey: patientId,
           adminIds: JSON.stringify(updatedAdminIds),
           updatedAt: new Date().toISOString()
@@ -639,8 +639,8 @@ export class UserService {
       const updatedLinkedPatients = linkedPatients.filter((id: string) => id !== patientId);
       
       await this.usersTableClient.updateEntity({
-        partitionKey: 'admin',
-        rowKey: adminId,
+        PartitionKey: 'admin',
+        RowKey: adminId,
         linkedPatients: JSON.stringify(updatedLinkedPatients)
       }, 'Merge');
 
@@ -680,6 +680,32 @@ export class UserService {
       
       if (!user) {
         throw new Error(`User with ID ${userId} not found`);
+      }
+
+      // If the user is an admin, handle admin-specific cleanup
+      if (user.partitionKey === 'admin') {
+        // Delete all medications they prescribed
+        const medications = await this.medicationsTableClient.listEntities({
+          queryOptions: {
+            filter: odata`prescribedBy eq '${userId}'`
+          }
+        });
+        
+        for await (const medication of medications) {
+          await this.medicationsTableClient.deleteEntity(medication.partitionKey as string, medication.rowKey as string);
+        }
+
+        // Get the admin's linked patients
+        let linkedPatients: string[] = [];
+        try {
+          linkedPatients = JSON.parse((user as any).linkedPatients || '[]');
+        } catch (error) {
+          console.error('Error parsing linkedPatients:', error);
+        }
+
+        // For each linked patient, we don't need to update anything since the relationship
+        // is only stored in the admin's linkedPatients field
+        console.log(`Admin ${userId} had ${linkedPatients.length} linked patients`);
       }
 
       // Delete the user entity
