@@ -45,28 +45,42 @@ interface Prediction {
   tagName: string;
 }
 
+interface PredictionResponse {
+  predictions: Array<{
+    probability: number;
+    tagName: string;
+    tagId: string;
+  }>;
+}
+
+interface VerificationResult {
+  verified: boolean;
+  pill_name: string;
+  confidence: number;
+  message: string;
+  medication?: {
+    name: string;
+    dosage: string;
+  };
+}
+
 // The endpoint from your Azure Custom Vision
 const PREDICTION_ENDPOINT = process.env.CUSTOM_VISION_ENDPOINT;
 const PREDICTION_KEY = process.env.CUSTOM_VISION_KEY;
 
 export async function POST(request: Request) {
   try {
-    console.log('Verify medication API called');
     const requestData = await request.json();
     const { image, medicationId, patientId } = requestData;
-    
-    console.log('Verify medication request:', {
-      medicationId,
-      patientId,
-      imageSize: image ? image.length : 0
-    });
-    
+
+    if (!image || !medicationId || !patientId) {
+      throw new Error('Missing required fields: image, medicationId, or patientId');
+    }
+
     // Convert base64 to buffer
     const imageBuffer = Buffer.from(image.split(',')[1], 'base64');
-    console.log('Image buffer size:', imageBuffer.length);
 
-    // Make the prediction request using fetch
-    console.log('Making prediction request to:', process.env.CUSTOM_VISION_ENDPOINT);
+    // Make the prediction request
     const response = await fetch(process.env.CUSTOM_VISION_ENDPOINT!, {
       method: 'POST',
       headers: {
@@ -86,59 +100,62 @@ export async function POST(request: Request) {
       throw new Error(`Prediction API error: ${response.status} ${response.statusText}`);
     }
 
-    const results = await response.json();
-    console.log('Prediction API response:', results);
+    const results = await response.json() as PredictionResponse;
 
-    // Process predictions
-    const predictions = results.predictions || [];
-    const topPrediction = predictions[0];
+    // Process predictions with null check
+    const predictions = results?.predictions || [];
+    
+    // Get the highest probability prediction
+    const topPrediction = predictions.length > 0 
+      ? predictions.reduce((prev, current) => 
+          (current.probability > prev.probability) ? current : prev
+        )
+      : null;
 
-    // If no predictions were found
     if (!topPrediction) {
-      console.log('No predictions found');
       return NextResponse.json({
         verified: false,
         pill_name: 'unknown',
         confidence: 0,
-        message: 'No pill detected in image. Please ensure the pill is centered and well-lit.'
-      }, { status: 200 }); // Return 200 as this is a valid response
+        message: 'No pill detected in image. Please try again.'
+      } as VerificationResult, { status: 200 });
     }
 
-    // Get medication information for the response
-    const medicationsService = new AzureTableService('Medications');
-    const medicationEntity = await medicationsService.getEntity(patientId, medicationId);
-    const medication = {
-      name: medicationEntity.name as string,
-      dosage: medicationEntity.dosage as string
-    };
+    // Verify against medication database
+    try {
+      const medicationsService = new AzureTableService('Medications');
+      const medicationEntity = await medicationsService.getEntity(patientId, medicationId);
+      
+      if (!medicationEntity) {
+        throw new Error('Medication not found in database');
+      }
 
-    const result = {
-      verified: topPrediction.probability > 0.75,
-      pill_name: topPrediction.tagName,
-      confidence: topPrediction.probability,
-      message: topPrediction.probability > 0.75
-        ? `Successfully identified as ${topPrediction.tagName}`
-        : 'Low confidence detection. Please try again with better lighting',
-      medication: medication
-    };
-    
-    console.log('Verification result:', result);
+      const result: VerificationResult = {
+        verified: topPrediction.probability > 0.75,
+        pill_name: topPrediction.tagName,
+        confidence: topPrediction.probability,
+        message: topPrediction.probability > 0.75
+          ? `Successfully identified as ${topPrediction.tagName}`
+          : 'Low confidence detection. Please try again with better lighting',
+        medication: {
+          name: medicationEntity.name as string,
+          dosage: medicationEntity.dosage as string
+        }
+      };
 
-    return NextResponse.json(result);
+      return NextResponse.json(result);
+    } catch (dbError) {
+      console.error('Database error:', dbError);
+      throw new Error('Failed to verify medication against database');
+    }
   } catch (error) {
     console.error("Pill verification error:", error);
-    const errorResult = {
-      error: error instanceof Error ? error.message : "Failed to verify medication",
-      message: "Unable to process image. Please try again.",
+    
+    return NextResponse.json({
       verified: false,
       pill_name: 'unknown',
-      confidence: 0
-    };
-    console.log('Returning error response:', errorResult);
-    
-    return NextResponse.json(
-      errorResult,
-      { status: 200 } // Return 200 even for processing errors
-    );
+      confidence: 0,
+      message: error instanceof Error ? error.message : "Failed to verify medication"
+    } as VerificationResult, { status: 200 });
   }
 }
