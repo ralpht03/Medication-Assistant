@@ -73,6 +73,12 @@ export async function POST(request: Request) {
     const requestData = await request.json();
     const { image, medicationId, patientId } = requestData;
 
+    console.log('Starting medication verification:', {
+      medicationId,
+      patientId,
+      imageSize: image.length
+    });
+
     if (!image || !medicationId || !patientId) {
       throw new Error('Missing required fields: image, medicationId, or patientId');
     }
@@ -101,6 +107,13 @@ export async function POST(request: Request) {
     }
 
     const results = await response.json() as PredictionResponse;
+    console.log('Raw prediction results:', {
+      predictionsCount: results?.predictions?.length || 0,
+      allPredictions: results?.predictions?.map(p => ({
+        tagName: p.tagName,
+        probability: (p.probability * 100).toFixed(2) + '%'
+      }))
+    });
 
     // Process predictions with null check
     const predictions = results?.predictions || [];
@@ -113,6 +126,7 @@ export async function POST(request: Request) {
       : null;
 
     if (!topPrediction) {
+      console.log('No valid predictions found in response');
       return NextResponse.json({
         verified: false,
         pill_name: 'unknown',
@@ -121,14 +135,22 @@ export async function POST(request: Request) {
       } as VerificationResult, { status: 200 });
     }
 
+    console.log('Top prediction:', {
+      pillName: topPrediction.tagName,
+      confidence: (topPrediction.probability * 100).toFixed(2) + '%'
+    });
+
     // Verify against medication database
     try {
       const medicationsService = new AzureTableService('Medications');
       const medicationEntity = await medicationsService.getEntity(patientId, medicationId);
       
-      if (!medicationEntity) {
-        throw new Error('Medication not found in database');
-      }
+      console.log('Database verification:', {
+        expectedMedication: medicationEntity?.name,
+        detectedMedication: topPrediction.tagName,
+        isVerified: topPrediction.probability > 0.75,
+        confidence: (topPrediction.probability * 100).toFixed(2) + '%'
+      });
 
       const result: VerificationResult = {
         verified: topPrediction.probability > 0.75,
@@ -149,8 +171,7 @@ export async function POST(request: Request) {
       throw new Error('Failed to verify medication against database');
     }
   } catch (error) {
-    console.error("Pill verification error:", error);
-    
+    console.error('Verification process error:', error);
     return NextResponse.json({
       verified: false,
       pill_name: 'unknown',
