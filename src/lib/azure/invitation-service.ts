@@ -1,5 +1,6 @@
-import { AzureTableService } from './table-service';
+import { AzureTableService } from '../azure-table-utils';
 import { odata } from '@azure/data-tables';
+import { ensureTableExists } from '../azure-table-utils';
 
 export interface Invitation {
   PartitionKey: string;  // "INVITATION"
@@ -23,6 +24,10 @@ export class InvitationService {
 
   constructor() {
     this.tableService = new AzureTableService('Invitations');
+    // Ensure the Invitations table exists
+    ensureTableExists('Invitations').catch(error => {
+      console.error('Failed to ensure Invitations table exists:', error);
+    });
   }
 
   async createInvitation(invitation: Omit<Invitation, 'PartitionKey' | 'RowKey'>) {

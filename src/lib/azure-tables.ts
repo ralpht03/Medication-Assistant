@@ -457,10 +457,7 @@ export class UserService {
       
       // Delete all matching relations
       for await (const relation of relations) {
-        await this.adminPatientRelationsTableClient.deleteEntity(
-          relation.partitionKey as string,
-          relation.rowKey as string
-        );
+        await this.adminPatientRelationsTableClient.deleteEntity(relation.partitionKey as string, relation.rowKey as string);
       }
 
       // Update the patient's adminIds array
@@ -624,7 +621,7 @@ export class UserService {
       
       // Delete all relations
       for await (const relation of relations) {
-        await this.adminPatientRelationsTableClient.deleteEntity(relation.partitionKey, relation.rowKey);
+        await this.adminPatientRelationsTableClient.deleteEntity(relation.partitionKey as string, relation.rowKey as string);
       }
 
       // Update the patient's adminIds array
@@ -638,14 +635,27 @@ export class UserService {
       }, 'Merge');
 
       // Update the admin's linkedPatients array
-      const linkedPatients = JSON.parse(admin.linkedPatients || '[]');
+      const linkedPatients = JSON.parse((admin as any).linkedPatients || '[]');
       const updatedLinkedPatients = linkedPatients.filter((id: string) => id !== patientId);
       
       await this.usersTableClient.updateEntity({
-        partitionKey: 'USER',
+        partitionKey: 'admin',
         rowKey: adminId,
         linkedPatients: JSON.stringify(updatedLinkedPatients)
       }, 'Merge');
+
+      // Delete any pending invitations between this admin and patient
+      const invitationService = new InvitationService();
+      const invitations = await invitationService.getInvitationsByInviter(adminId);
+      const patientInvitations = (invitations as Invitation[]).filter(inv => 
+        inv.inviteeUserId === patientId || inv.inviteeEmail === (patient as any).email
+      );
+      
+      await Promise.all(patientInvitations.map(inv => 
+        invitationService.deleteEntity('INVITATION', inv.rowKey)
+      ));
+
+      console.log(`Patient ${patientId} unassigned from admin ${adminId}`);
     } catch (error) {
       console.error('Error unassigning patient from admin:', error);
       throw error;
@@ -673,7 +683,7 @@ export class UserService {
       }
 
       // Delete the user entity
-      await this.usersTableClient.deleteEntity(user.partitionKey, user.rowKey);
+      await this.usersTableClient.deleteEntity(user.partitionKey as string, user.rowKey as string);
 
       // Delete any invitations where user is the inviter or invitee
       const invitationService = new InvitationService();
@@ -681,7 +691,7 @@ export class UserService {
         `inviterUserId eq '${userId}' or inviteeUserId eq '${userId}'`
       );
       
-      for (const invitation of invitations) {
+      for (const invitation of invitations as Invitation[]) {
         await invitationService.deleteEntity(invitation.partitionKey, invitation.rowKey);
       }
 
@@ -693,7 +703,7 @@ export class UserService {
       });
       
       for await (const notification of notifications) {
-        await this.notificationsTableClient.deleteEntity(notification.partitionKey, notification.rowKey);
+        await this.notificationsTableClient.deleteEntity(notification.partitionKey as string, notification.rowKey as string);
       }
 
     } catch (error) {
@@ -701,4 +711,11 @@ export class UserService {
       throw error;
     }
   }
+}
+
+interface Invitation {
+  partitionKey: string;
+  rowKey: string;
+  inviteeUserId?: string;
+  inviteeEmail?: string;
 }

@@ -15,7 +15,8 @@ import {
   Bot,
   Mail,
   Camera,
-  AlertTriangle
+  AlertTriangle,
+  Users
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -43,6 +44,7 @@ export default function Sidebar() {
       { name: 'AI Assistant', href: '/patient/ai-assistant', icon: Bot },
       { name: 'Notifications', href: '/patient/notifications', icon: Bell },
       { name: 'Invitations', href: '/patient/invitations', icon: Mail },
+      { name: 'My Helpers', href: '/patient/helpers', icon: Users },
       { name: 'Settings', href: '/patient/settings', icon: Settings },
     ],
     helper: [
