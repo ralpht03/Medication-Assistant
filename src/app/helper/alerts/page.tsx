@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { AlertCircle, Check, Trash2, Filter, X } from 'lucide-react'
+import { AlertCircle, Filter } from 'lucide-react'
 import PageLayout from '@/components/PageLayout'
+import AlertsPanel from '@/components/AlertsPanel'
 import { Alerts } from '@/lib/types'
 
 interface AlertFilters {
@@ -11,21 +12,13 @@ interface AlertFilters {
   read?: boolean
 }
 
-interface AlertWithPatientInfo {
+interface Alert extends Alerts {
   id: string;
-  type: string;
-  message: string;
-  timestamp: string;
-  read: boolean;
-  priority: string;
-  medicationId: string;
-  medicationName: string;
-  patientId: string;
-  patientName: string;
+  time: string;
 }
 
 export default function HelperAlertsPage() {
-  const [alerts, setAlerts] = useState<AlertWithPatientInfo[]>([])
+  const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState<AlertFilters>({})
@@ -61,7 +54,35 @@ export default function HelperAlertsPage() {
       }
 
       const data = await response.json()
-      setAlerts(data)
+      // Transform the data to match our Alert interface
+      const transformedAlerts = data.map((alert: Alerts) => {
+        let timeString = 'Unknown time'
+        try {
+          const timestamp = alert.timestamp || alert.Timestamp
+          if (timestamp) {
+            const date = new Date(timestamp)
+            if (!isNaN(date.getTime())) {
+              timeString = date.toLocaleString([], { 
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit', 
+                minute: '2-digit',
+                hour12: true 
+              })
+            }
+          }
+        } catch (e) {
+          console.warn('Error parsing timestamp:', e)
+        }
+        
+        return {
+          ...alert,
+          id: alert.RowKey || `alert-${Date.now()}-${Math.random()}`,
+          time: timeString
+        }
+      })
+      setAlerts(transformedAlerts)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch alerts')
     } finally {
@@ -69,7 +90,7 @@ export default function HelperAlertsPage() {
     }
   }
 
-  const markAsRead = async (alertId: string) => {
+  const handleAlertAction = async (alertId: string, action: 'acknowledge') => {
     try {
       const userStr = localStorage.getItem('user')
       if (!userStr) {
@@ -84,7 +105,8 @@ export default function HelperAlertsPage() {
         },
         body: JSON.stringify({
           userId: user.id || user.rowKey,
-          alertId
+          alertId,
+          role: 'helper'
         })
       })
 
@@ -97,41 +119,6 @@ export default function HelperAlertsPage() {
       ))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to mark alert as read')
-    }
-  }
-
-  const deleteAlert = async (alertId: string) => {
-    try {
-      const userStr = localStorage.getItem('user')
-      if (!userStr) {
-        throw new Error('User not found')
-      }
-
-      const user = JSON.parse(userStr)
-      const response = await fetch(`/api/alerts?userId=${user.id || user.rowKey}&alertId=${alertId}`, {
-        method: 'DELETE'
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to delete alert')
-      }
-
-      setAlerts(alerts.filter(alert => alert.id !== alertId))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete alert')
-    }
-  }
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return 'text-red-600'
-      case 'medium':
-        return 'text-yellow-600'
-      case 'low':
-        return 'text-green-600'
-      default:
-        return 'text-gray-600'
     }
   }
 
@@ -197,7 +184,7 @@ export default function HelperAlertsPage() {
                 <label className="block text-sm font-medium text-gray-700">Status</label>
                 <select
                   value={filters.read === undefined ? '' : filters.read ? 'read' : 'unread'}
-                  onChange={(e) => setFilters({ ...filters, read: e.target.value === 'read' ? true : e.target.value === 'unread' ? false : undefined })}
+                  onChange={(e) => setFilters({ ...filters, read: e.target.value === '' ? undefined : e.target.value === 'read' })}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 >
                   <option value="">All</option>
@@ -214,56 +201,12 @@ export default function HelperAlertsPage() {
         <div className="flex justify-center items-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
         </div>
-      ) : alerts.length === 0 ? (
-        <div className="text-center py-8">
-          <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500">No alerts to display</p>
-          <p className="text-sm text-gray-400 mt-1">You'll be notified when new alerts come in</p>
-        </div>
       ) : (
-        <div className="space-y-4">
-          {alerts.map((alert) => (
-            <div
-              key={alert.id}
-              className={`p-4 bg-white rounded-lg shadow ${
-                alert.read ? 'border-l-4 border-gray-300' : 'border-l-4 border-blue-500'
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center">
-                    <AlertCircle className={`h-5 w-5 ${getPriorityColor(alert.priority || '')} mr-2`} />
-                    <h3 className="text-lg font-medium text-gray-900">{alert.message}</h3>
-                  </div>
-                  <div className="mt-2 text-sm text-gray-500">
-                    <p>Patient: {alert.patientName}</p>
-                    <p>Type: {alert.type}</p>
-                    <p>Priority: {alert.priority}</p>
-                    <p>Date: {new Date(alert.timestamp).toLocaleString()}</p>
-                  </div>
-                </div>
-                <div className="flex space-x-2">
-                  {!alert.read && (
-                    <button
-                      onClick={() => markAsRead(alert.id)}
-                      className="p-2 text-gray-400 hover:text-green-600"
-                      title="Mark as read"
-                    >
-                      <Check className="h-5 w-5" />
-                    </button>
-                  )}
-                  <button
-                    onClick={() => deleteAlert(alert.id)}
-                    className="p-2 text-gray-400 hover:text-red-600"
-                    title="Delete alert"
-                  >
-                    <Trash2 className="h-5 w-5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+        <AlertsPanel 
+          alerts={alerts} 
+          onAlertAction={handleAlertAction} 
+          showPatientInfo={true}
+        />
       )}
     </PageLayout>
   )

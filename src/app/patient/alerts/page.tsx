@@ -90,7 +90,7 @@ export default function PatientAlertsPage() {
     fetchAlerts()
   }, [router])
 
-  const handleAlertAction = async (alertId: string, action: 'acknowledge' | 'dismiss' | 'emergency') => {
+  const handleAlertAction = async (alertId: string, action: 'acknowledge') => {
     try {
       const userStr = localStorage.getItem('user')
       if (!userStr) return
@@ -105,28 +105,17 @@ export default function PatientAlertsPage() {
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ userId, alertId })
+          body: JSON.stringify({
+            userId,
+            alertId,
+            role: 'patient'
+          })
         })
 
         // Update local state
         setAlerts(alerts.map(alert => 
           alert.id === alertId ? { ...alert, read: true } : alert
         ))
-      } else if (action === 'dismiss') {
-        // Delete the alert
-        await fetch(`/api/alerts?userId=${userId}&alertId=${alertId}`, {
-          method: 'DELETE'
-        })
-
-        // Update local state
-        setAlerts(alerts.filter(alert => alert.id !== alertId))
-      } else if (action === 'emergency') {
-        // For emergency contact, we could:
-        // 1. Show emergency contact information
-        // 2. Initiate a call if on mobile
-        // 3. Send an emergency notification
-        // For now, we'll just navigate to a help page
-        router.push('/patient/emergency-contact')
       }
     } catch (error) {
       console.error('Error handling alert action:', error)

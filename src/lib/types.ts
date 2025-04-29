@@ -9,6 +9,9 @@ export interface Alerts {
   message: string
   read: boolean
   priority?: string
+  adminAck?: boolean
+  patientAck?: boolean
+  helperAck?: boolean
 }
 
 export interface Medications {

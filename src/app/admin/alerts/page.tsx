@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { AlertCircle, Check, Trash2, Filter, X } from 'lucide-react'
+import { AlertCircle, Filter } from 'lucide-react'
 import PageLayout from '@/components/PageLayout'
+import AlertsPanel from '@/components/AlertsPanel'
 import { Alerts } from '@/lib/types'
 
 interface AlertFilters {
@@ -11,21 +12,13 @@ interface AlertFilters {
   read?: boolean
 }
 
-interface AlertWithPatientInfo {
+interface Alert extends Alerts {
   id: string;
-  type: string;
-  message: string;
-  timestamp: string;
-  read: boolean;
-  priority: string;
-  medicationId: string;
-  medicationName: string;
-  patientId: string;
-  patientName: string;
+  time: string;
 }
 
 export default function AdminAlertsPage() {
-  const [alerts, setAlerts] = useState<AlertWithPatientInfo[]>([])
+  const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState<AlertFilters>({})
@@ -62,7 +55,36 @@ export default function AdminAlertsPage() {
         return
       }
       
-      setAlerts(data)
+      // Transform the data to match our Alert interface
+      const transformedAlerts = data.map((alert: Alerts) => {
+        let timeString = 'Unknown time'
+        try {
+          const timestamp = alert.timestamp || alert.Timestamp
+          if (timestamp) {
+            const date = new Date(timestamp)
+            if (!isNaN(date.getTime())) {
+              timeString = date.toLocaleString([], { 
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit', 
+                minute: '2-digit',
+                hour12: true 
+              })
+            }
+          }
+        } catch (e) {
+          console.warn('Error parsing timestamp:', e)
+        }
+        
+        return {
+          ...alert,
+          id: alert.RowKey || `alert-${Date.now()}-${Math.random()}`,
+          time: timeString
+        }
+      })
+      
+      setAlerts(transformedAlerts)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load alerts. Please try again later.')
@@ -72,62 +94,41 @@ export default function AdminAlertsPage() {
     }
   }
 
-  const markAsRead = async (alertId: string) => {
+  const handleAlertAction = async (alertId: string, action: 'acknowledge') => {
     try {
-      const user = JSON.parse(localStorage.getItem('user') || 'null')
-      if (!user?.id) {
+      const userStr = localStorage.getItem('user')
+      if (!userStr) {
         throw new Error('User not found')
       }
 
+      const user = JSON.parse(userStr)
       const response = await fetch('/api/alerts', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, alertId })
-      })
-      
-      if (!response.ok) throw new Error('Failed to mark alert as read')
-      fetchAlerts()
-    } catch (err) {
-      console.error('Error marking alert as read:', err)
-    }
-  }
-
-  const deleteAlert = async (alertId: string) => {
-    try {
-      const user = JSON.parse(localStorage.getItem('user') || 'null')
-      if (!user?.id) {
-        throw new Error('User not found')
-      }
-
-      const response = await fetch(`/api/alerts?userId=${user.id}&alertId=${alertId}`, {
-        method: 'DELETE'
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.id || user.rowKey,
+          alertId,
+          role: 'admin'
+        })
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to delete alert')
+        throw new Error('Failed to mark alert as read')
       }
 
-      setAlerts(prevAlerts => prevAlerts.filter(alert => alert.id !== alertId))
-      setError(null)
+      setAlerts(alerts.map(alert => 
+        alert.id === alertId ? { ...alert, read: true } : alert
+      ))
     } catch (err) {
-      console.error('Error deleting alert:', err)
-      setError(err instanceof Error ? err.message : 'Failed to delete alert')
+      setError(err instanceof Error ? err.message : 'Failed to mark alert as read')
     }
   }
 
   useEffect(() => {
     fetchAlerts()
   }, [filters])
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high': return 'bg-red-100 text-red-800'
-      case 'medium': return 'bg-orange-100 text-orange-800'
-      case 'low': return 'bg-yellow-100 text-yellow-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
-  }
 
   return (
     <PageLayout userType="admin" title="Alerts Management">
@@ -150,7 +151,7 @@ export default function AdminAlertsPage() {
                 <label className="block text-sm font-medium text-gray-700">Priority</label>
                 <select
                   value={filters.priority || ''}
-                  onChange={(e) => setFilters({ ...filters, priority: e.target.value as any })}
+                  onChange={(e) => setFilters({ ...filters, priority: e.target.value as 'high' | 'medium' | 'low' || undefined })}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
                 >
                   <option value="">All</option>
@@ -163,7 +164,7 @@ export default function AdminAlertsPage() {
                 <label className="block text-sm font-medium text-gray-700">Type</label>
                 <select
                   value={filters.type || ''}
-                  onChange={(e) => setFilters({ ...filters, type: e.target.value as any })}
+                  onChange={(e) => setFilters({ ...filters, type: e.target.value as 'overdose' | 'underdose' | 'verification_bypass' || undefined })}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
                 >
                   <option value="">All</option>
@@ -189,66 +190,25 @@ export default function AdminAlertsPage() {
         )}
       </div>
 
-      {loading ? (
-        <div className="flex justify-center items-center p-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700">
+          <div className="flex">
+            <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
+            <p>{error}</p>
+          </div>
         </div>
-      ) : error ? (
-        <div className="text-red-500 p-4">{error}</div>
-      ) : alerts.length === 0 ? (
-        <div className="text-center p-8">
-          <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900">No alerts found</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            {Object.keys(filters).length > 0 
-              ? "Try adjusting your filters or check back later for new alerts."
-              : "There are currently no alerts to display. Check back later for updates."}
-          </p>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
         </div>
       ) : (
-        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-          <ul className="divide-y divide-gray-200">
-            {alerts.map((alert) => (
-              <li 
-                key={`${alert.patientId}-${alert.id}-${alert.timestamp}`} 
-                className="p-4 hover:bg-gray-50"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <AlertCircle className={`h-5 w-5 ${getPriorityColor(alert.priority || 'low')}`} />
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-900">{alert.message}</p>
-                      <p className="text-sm text-gray-500">
-                        {alert.patientName}
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        {new Date(alert.timestamp).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {!alert.read && (
-                      <button
-                        onClick={() => markAsRead(alert.id)}
-                        className="p-2 text-green-600 hover:text-green-800"
-                        title="Mark as read"
-                      >
-                        <Check className="h-5 w-5" />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => deleteAlert(alert.id)}
-                      className="p-2 text-red-600 hover:text-red-800"
-                      title="Delete alert"
-                    >
-                      <Trash2 className="h-5 w-5" />
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <AlertsPanel 
+          alerts={alerts} 
+          onAlertAction={handleAlertAction} 
+          showPatientInfo={true}
+        />
       )}
     </PageLayout>
   )

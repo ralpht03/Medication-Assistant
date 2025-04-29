@@ -5,11 +5,12 @@ import { Alerts } from "@/lib/types"
 interface Alert extends Alerts {
   id: string;
   time: string;
+  dismissed?: boolean;
 }
 
 interface AlertsPanelProps {
   alerts: Alert[];
-  onAlertAction: (alertId: string, action: 'acknowledge' | 'dismiss' | 'emergency') => Promise<void>;
+  onAlertAction: (alertId: string, action: 'acknowledge') => Promise<void>;
   showPatientInfo: boolean;
 }
 
@@ -23,6 +24,20 @@ const AlertsPanel = ({ alerts, onAlertAction, showPatientInfo }: AlertsPanelProp
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [localAlerts, setLocalAlerts] = useState<Alert[]>(alerts);
+
+  // Update local alerts when props change
+  useEffect(() => {
+    setLocalAlerts(alerts);
+  }, [alerts]);
+
+  const handleDismiss = (alertId: string) => {
+    setLocalAlerts(prevAlerts => 
+      prevAlerts.map(alert => 
+        alert.id === alertId ? { ...alert, dismissed: true } : alert
+      )
+    );
+  };
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -66,17 +81,20 @@ const AlertsPanel = ({ alerts, onAlertAction, showPatientInfo }: AlertsPanelProp
     );
   }
 
+  // Filter out dismissed alerts
+  const visibleAlerts = localAlerts.filter(alert => !alert.dismissed);
+
   return (
     <div className="bg-white rounded-lg shadow p-6">
       <div className="space-y-4">
-        {alerts.length === 0 ? (
+        {visibleAlerts.length === 0 ? (
           <div className="text-center py-8">
             <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-500">No alerts to display</p>
             <p className="text-sm text-gray-400 mt-1">You'll be notified when new alerts come in</p>
           </div>
         ) : (
-          alerts.map((alert) => (
+          visibleAlerts.map((alert) => (
             <div
               key={alert.id}
               className={`p-4 ${getPriorityColor(alert.priority || 'medium')} border-l-4 ${
@@ -89,7 +107,7 @@ const AlertsPanel = ({ alerts, onAlertAction, showPatientInfo }: AlertsPanelProp
             >
               <div className="flex items-start">
                 <div className="flex-shrink-0">{getAlertIcon(alert.type)}</div>
-                <div className="ml-3">
+                <div className="ml-3 flex-1">
                   <p className="text-sm font-medium text-gray-900">{alert.message}</p>
                   <span className="text-xs text-gray-500">{alert.time}</span>
                   {showPatientInfo && (
@@ -98,6 +116,22 @@ const AlertsPanel = ({ alerts, onAlertAction, showPatientInfo }: AlertsPanelProp
                       <span className="ml-1 text-sm text-gray-500">{alert.patientId}</span>
                     </div>
                   )}
+                  <div className="mt-2 flex space-x-2">
+                    {!alert.read && (
+                      <button
+                        onClick={() => onAlertAction(alert.id, 'acknowledge')}
+                        className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      >
+                        Acknowledge
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDismiss(alert.id)}
+                      className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-gray-700 bg-gray-100 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

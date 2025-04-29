@@ -77,9 +77,21 @@ export async function GET(request: Request) {
     }
 
     if (status === 'read') {
-      filter += ` and read eq true`;
+      if (role === 'admin') {
+        filter += ` and (read eq true or adminAck eq true)`;
+      } else if (role === 'patient') {
+        filter += ` and (read eq true or patientAck eq true)`;
+      } else if (role === 'helper') {
+        filter += ` and (read eq true or helperAck eq true)`;
+      }
     } else if (status === 'unread') {
-      filter += ` and read eq false`;
+      if (role === 'admin') {
+        filter += ` and (read eq false and not(adminAck eq true))`;
+      } else if (role === 'patient') {
+        filter += ` and (read eq false and not(patientAck eq true))`;
+      } else if (role === 'helper') {
+        filter += ` and (read eq false and not(helperAck eq true))`;
+      }
     }
 
     // Fetch alerts
@@ -147,30 +159,60 @@ export async function GET(request: Request) {
   }
 }
 
-// Mark alert as read
+// Mark alert as read/acknowledged
 export async function PATCH(request: Request) {
   try {
-    const { userId, alertId } = await request.json();
+    const { userId, alertId, role } = await request.json();
 
-    if (!userId || !alertId) {
+    if (!userId || !alertId || !role) {
       return NextResponse.json(
-        { error: "User ID and Alert ID are required" },
+        { error: "User ID, Alert ID, and role are required" },
         { status: 400 }
       );
     }
 
     // Create table client
     const alertsTable = createTableClient(ALERTS_TABLE);
+
+    // Get the current alert to preserve other fields
+    const alert = await alertsTable.getEntity(userId, alertId);
     
-    // Update the alert's read status
-    await alertsTable.updateEntity(
-      {
-        partitionKey: userId,
-        rowKey: alertId,
-        read: true
-      },
-      "Merge"
+    // Update the alert's acknowledgment status based on role
+    const updateFields: any = {
+      PartitionKey: userId,
+      RowKey: alertId,
+    };
+
+    // Set role-specific acknowledgment
+    switch (role) {
+      case 'admin':
+        updateFields.adminAck = true;
+        break;
+      case 'patient':
+        updateFields.patientAck = true;
+        break;
+      case 'helper':
+        updateFields.helperAck = true;
+        break;
+      default:
+        return NextResponse.json(
+          { error: "Invalid role" },
+          { status: 400 }
+        );
+    }
+
+    // If all roles have acknowledged, mark as read
+    const allAcknowledged = (
+      (role === 'admin' || alert.adminAck) &&
+      (role === 'patient' || alert.patientAck) &&
+      (role === 'helper' || alert.helperAck)
     );
+
+    if (allAcknowledged) {
+      updateFields.read = true;
+    }
+
+    await alertsTable.updateEntity(updateFields, "Merge");
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -264,8 +306,8 @@ async function checkMissedDoses() {
               
               // Create patient alert
               const patientAlert = {
-                partitionKey: patientId as string,
-                rowKey: `missed-dose-${medicationId}-${timestamp}`,
+                PartitionKey: patientId as string,
+                RowKey: `missed-dose-${medicationId}-${timestamp}`,
                 Timestamp: timestamp,
                 userId: patientId,
                 patientId,
@@ -291,8 +333,8 @@ async function checkMissedDoses() {
                   const linkedPatients = admin.linkedPatients ? JSON.parse(admin.linkedPatients as string) : [];
                   if (linkedPatients.includes(patientId)) {
                     const adminAlert = {
-                      partitionKey: admin.rowKey as string,
-                      rowKey: `patient-missed-dose-${medicationId}-${timestamp}`,
+                      PartitionKey: admin.rowKey as string,
+                      RowKey: `patient-missed-dose-${medicationId}-${timestamp}`,
                       Timestamp: timestamp,
                       userId: admin.rowKey as string,
                       patientId,
@@ -497,8 +539,8 @@ export async function DELETE(request: Request) {
     // Create table client
     const alertsTable = createTableClient(ALERTS_TABLE);
     
-    // Delete the alert
-    await alertsTable.deleteEntity(userId, alertId);
+    // Delete the alert using the correct method signature
+    await alertsTable.deleteEntity(userId, alertId, { etag: "*" });
 
     return NextResponse.json({ success: true });
   } catch (error) {

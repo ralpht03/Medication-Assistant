@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { Search, AlertCircle, CheckCircle, PlusCircle, Loader2, UserMinus } from "lucide-react"
 import MedicationAssignmentModal from "./MedicationAssignmentModal"
+import { toast } from "react-hot-toast"
 
 // Define types based on your Azure Table Storage schema
 interface Patient {
@@ -220,9 +221,10 @@ const PatientListTable = ({ searchTerm: externalSearchTerm }: PatientListTablePr
       // Refresh the patient list
       setRefreshTrigger(prev => prev + 1)
       setShowRemoveConfirm(null)
+      toast.success('Patient removed successfully')
     } catch (err) {
       console.error('Error removing patient:', err)
-      alert('Failed to remove patient: ' + (err instanceof Error ? err.message : 'Unknown error'))
+      toast.error(err instanceof Error ? err.message : 'Failed to remove patient')
     }
   }
 

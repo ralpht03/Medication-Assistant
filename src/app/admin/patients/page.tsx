@@ -88,7 +88,7 @@ export default function AdminPatientsPage() {
       const user = JSON.parse(userStr);
       const adminId = user.rowKey || user.id;
 
-      const response = await fetch('/api/admin/patients/unassign', {
+      const response = await fetch('/api/admin/patients/remove', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -101,14 +101,14 @@ export default function AdminPatientsPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to unassign patient');
+        throw new Error(errorData.error || 'Failed to remove patient');
       }
 
-      toast.success('Patient unassigned successfully');
+      toast.success('Patient removed successfully');
       fetchPatients(); // Refresh the list
     } catch (error) {
-      console.error('Error unassigning patient:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to unassign patient');
+      console.error('Error removing patient:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to remove patient');
     } finally {
       setIsUnassigning(false);
     }
