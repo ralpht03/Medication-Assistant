@@ -163,12 +163,15 @@ export async function POST(request: Request) {
       const escapedAdminName = admin.firstName.replace(/'/g, "''") + ' ' + admin.lastName.replace(/'/g, "''");
       const filter = odata`PartitionKey eq '${patientId}' and prescribingDoctor eq '${escapedAdminName}'`;
       const verificationLogs = verificationLogsTableClient.listEntities<TableEntity>({ queryOptions: { filter } });
-      
+      console.log('Patient ID:', patientId);
+      console.log('Escaped admin name:', escapedAdminName);
+      console.log('Verification logs:', verificationLogs);
       for await (const log of verificationLogs) {
+        console.log('Deleting verification log:', log);
         try {
           await verificationLogsTableClient.deleteEntity(
-            log.PartitionKey,
-            log.RowKey
+            log.partitionKey,
+            log.rowKey
           );
           console.log(`Successfully deleted verification log ${log.RowKey}`);
         } catch (error) {
