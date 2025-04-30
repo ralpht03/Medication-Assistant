@@ -73,7 +73,9 @@ export async function POST(request: Request) {
       patientId,
       medicationId,
       medication,
+      medications,
       question,
+      helperContext,
       // Direct fields for medication assignment
       name,
       dosage,
@@ -201,63 +203,66 @@ export async function POST(request: Request) {
         if (!medication) {
           return NextResponse.json({ error: 'Medication data is required' }, { status: 400 });
         }
-        const info = await openAIService.getMedicationInfo(medication, body.helperContext);
+        const info = await openAIService.getMedicationInfo(medication, helperContext);
         return NextResponse.json({ info });
 
       case 'sideEffects':
         if (!medication) {
           return NextResponse.json({ error: 'Medication data is required' }, { status: 400 });
         }
-        const effects = await openAIService.getSideEffects(medication, body.helperContext);
+        const effects = await openAIService.getSideEffects(medication, helperContext);
         return NextResponse.json({ effects });
 
       case 'interactions':
-        if (!medications) {
-          return NextResponse.json({ error: 'Medications data is required' }, { status: 400 });
+        if (!medications || !Array.isArray(medications)) {
+          return NextResponse.json({ error: 'Valid medications array is required' }, { status: 400 });
         }
-        const interactions = await openAIService.checkInteractions(medications, body.helperContext);
+        const interactions = await openAIService.checkInteractions(medications, helperContext);
         return NextResponse.json({ interactions });
 
       case 'missedDose':
         if (!medication) {
           return NextResponse.json({ error: 'Medication data is required' }, { status: 400 });
         }
-        const guidance = await openAIService.getMissedDoseGuidance(medication, body.helperContext);
+        const guidance = await openAIService.getMissedDoseGuidance(medication, helperContext);
         return NextResponse.json({ guidance });
 
       case 'emergency':
         if (!medication) {
           return NextResponse.json({ error: 'Medication data is required' }, { status: 400 });
         }
-        const emergencyGuidance = await openAIService.getEmergencyGuidance(medication, question, body.helperContext);
+        const emergencyGuidance = await openAIService.getEmergencyGuidance(medication, question, helperContext);
         return NextResponse.json({ guidance: emergencyGuidance });
 
       case 'schedule':
-        if (!medications) {
-          return NextResponse.json({ error: 'Medications data is required' }, { status: 400 });
+        if (!medications || !Array.isArray(medications)) {
+          return NextResponse.json({ error: 'Valid medications array is required' }, { status: 400 });
         }
-        const schedule = await openAIService.getSchedule(medications, body.helperContext);
+        const schedule = await openAIService.getSchedule(medications, helperContext);
         return NextResponse.json({ schedule });
 
       case 'allMedications':
-        if (!medications) {
-          return NextResponse.json({ error: 'Medications data is required' }, { status: 400 });
+        if (!medications || !Array.isArray(medications)) {
+          return NextResponse.json({ error: 'Valid medications array is required' }, { status: 400 });
         }
-        const allMedInfo = await openAIService.getAllMedicationsInfo(medications, question, body.helperContext);
+        if (!question) {
+          return NextResponse.json({ error: 'Question is required' }, { status: 400 });
+        }
+        const allMedInfo = await openAIService.getAllMedicationsInfo(medications, question, helperContext);
         return NextResponse.json({ response: allMedInfo });
 
       case 'generalInfo':
         if (!question) {
           return NextResponse.json({ error: 'Question is required' }, { status: 400 });
         }
-        const generalInfo = await openAIService.getGeneralMedicalInfo(question, body.helperContext);
+        const generalInfo = await openAIService.getGeneralMedicalInfo(question, helperContext);
         return NextResponse.json({ response: generalInfo });
 
       case 'generalQuestion':
         if (!question) {
           return NextResponse.json({ error: 'Question is required' }, { status: 400 });
         }
-        const generalResponse = await openAIService.answerGeneralQuestion(question, body.helperContext);
+        const generalResponse = await openAIService.answerGeneralQuestion(question, helperContext);
         return NextResponse.json({ response: generalResponse });
 
       default:
