@@ -10,6 +10,7 @@ export interface Invitation {
   inviterEmail: string;  // Email of the inviter
   inviterName: string;   // Name of the inviter
   inviteeEmail: string;  // Email of the person being invited
+  inviteeName: string;   // Name of the person being invited
   inviteeUserId?: string; // ID of the user being invited (if they exist)
   inviteeRole: string;   // Role being assigned (patient or helper)
   token: string;         // Unique secure token for the invitation link

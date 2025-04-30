@@ -12,6 +12,7 @@ export interface Alerts {
   adminAck?: boolean
   patientAck?: boolean
   helperAck?: boolean
+  patientName?: string // Added for displaying patient name in alerts
 }
 
 export interface Medications {
@@ -90,6 +91,7 @@ export interface VerificationLogs {
   isCorrectDose: boolean; // Whether pillCount matches recommendedCount
   patientName: string;    // Patient's name
   verifiedBy: string;     // Name of the person who verified (helper or patient)
+  prescribingDoctor: string; // Name of the doctor who prescribed the medication
 }
 
 export interface DashboardMedication extends Medications {

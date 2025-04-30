@@ -4,16 +4,7 @@ import { useState, useEffect } from 'react';
 import PageLayout from '@/components/PageLayout';
 import AvailablePatientsList from '@/components/AvailablePatientsList';
 import { Mail, Users } from 'lucide-react';
-
-interface Invitation {
-  id: string;
-  email: string;
-  inviteeRole: string;
-  status: string;
-  createdAt: string;
-  expiresAt: string;
-  inviteeName?: string;
-}
+import { Invitation } from '@/lib/azure/invitation-service';
 
 export default function AdminInvitationsPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -53,7 +44,7 @@ export default function AdminInvitationsPage() {
         throw new Error('Failed to remove invitation');
       }
 
-      setInvitations(invitations.filter(inv => inv.id !== invitationId));
+      setInvitations(invitations.filter(inv => inv.RowKey !== invitationId));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove invitation');
     }
@@ -101,16 +92,16 @@ export default function AdminInvitationsPage() {
             <div className="space-y-4">
               {invitations.map((invitation) => (
                 <div
-                  key={invitation.id || invitation.email}
+                  key={invitation.RowKey || invitation.inviteeEmail}
                   className="bg-white p-4 rounded-lg border border-gray-200 hover:border-blue-500 transition-colors"
                 >
                   <div className="flex justify-between items-start">
                     <div>
                       <h3 className="font-medium text-gray-900">
-                        {invitation.inviteeName || invitation.email}
+                        {invitation.inviteeName}
                       </h3>
                       <p className="text-sm text-gray-500">
-                        {invitation.email}
+                        {invitation.inviteeEmail}
                       </p>
                       <p className="text-sm text-gray-500">
                         Status: {invitation.status}
@@ -120,10 +111,11 @@ export default function AdminInvitationsPage() {
                       </p>
                       <p className="text-sm text-gray-500">
                         Expires: {new Date(invitation.expiresAt).toLocaleDateString()}
+
                       </p>
                     </div>
                     <button
-                      onClick={() => handleRemove(invitation.id)}
+                      onClick={() => handleRemove(invitation.RowKey)}
                       className="text-red-500 hover:text-red-700"
                     >
                       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

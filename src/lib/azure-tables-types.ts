@@ -22,8 +22,8 @@ export interface Medication {
   }
   
   export interface AzureTableUser {
-    partitionKey: string;
-    rowKey: string;
+    PartitionKey: string;
+    RowKey: string;
     email: string;
     passwordHash: string;
     firstName: string;
@@ -35,26 +35,19 @@ export interface Medication {
     emergencyContact?: string;
     createdAt: string;
     updatedAt: string;
+    linkedPatients?: string;
+    linkedHelpers?: string;
   }
   
   export interface AzureTablePatient {
-    partitionKey: string;
-    rowKey: string;
+    PartitionKey: string;
+    RowKey: string;
     profile: string; // Stringified JSON object
     medicalHistory: string; // Stringified JSON object
     allergies: string; // Stringified JSON array
     currentMedications: string; // Stringified JSON array
     adminIds: string; // Stringified JSON array of admin IDs
     updatedAt?: string;
-  }
-  
-  export interface AzureTableAdminPatientRelation {
-    partitionKey: string; // adminId
-    rowKey: string; // patientId-relationId
-    patientId: string;
-    adminId: string;
-    createdAt: string;
-    status: 'active' | 'inactive' | 'pending';
   }
   
   export interface SignupData {

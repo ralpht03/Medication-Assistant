@@ -8,7 +8,7 @@ export interface Medication {
   dosage: string;
   instructions: string;
   quantity: string;
-  refills: string;
+  refills: number;
 }
 
 export interface PrescriptionData {
@@ -283,7 +283,7 @@ export class PrescriptionOCR {
       // Filter out names that are likely not patient names
       const possibleNames = nameMatches.filter(name => 
         !name.includes("Dr.") && 
-        !name.includes("M.D.") && 
+        !name.includes("M.D.") &&
         !name.includes("Medical") &&
         !name.includes("Center") &&
         !name.includes("Health") &&
@@ -491,7 +491,7 @@ export class PrescriptionOCR {
             dosage: this.extractDosage(fullName),
             instructions: '',
             quantity: '',
-            refills: '0'
+            refills: 0
           };
           continue;
         }
@@ -512,7 +512,7 @@ export class PrescriptionOCR {
           else if (trimmedLine.toLowerCase().includes('refill')) {
             const refillMatch = trimmedLine.match(/\d+/);
             if (refillMatch) {
-              currentMed.refills = refillMatch[0];
+              currentMed.refills = parseInt(refillMatch[0]) || 0;
             }
           }
         }
@@ -535,10 +535,10 @@ export class PrescriptionOCR {
   /**
    * Find medication details (instructions, quantity, refills) in text
    */
-  private findMedicationDetails(text: string, medicationName: string): { instructions: string, quantity: string, refills: string } {
+  private findMedicationDetails(text: string, medicationName: string): { instructions: string, quantity: string, refills: number } {
     const medStartIndex = text.indexOf(medicationName);
     if (medStartIndex === -1) {
-      return { instructions: '', quantity: '', refills: '0' };
+      return { instructions: '', quantity: '', refills: 0 };
     }
     
     // Extract chunk of text following the medication name
@@ -569,10 +569,10 @@ export class PrescriptionOCR {
     }
     
     // Extract refills
-    let refills = '0';
+    let refills = 0;
     const refillMatch = medChunk.match(/Refills?:\s*(\d+)/i);
     if (refillMatch) {
-      refills = refillMatch[1];
+      refills = parseInt(refillMatch[1]) || 0;
     }
     
     return { instructions, quantity, refills };
@@ -695,9 +695,9 @@ export class PrescriptionOCR {
   /**
    * Find refill information in text for a medication
    */
-  private findRefillsInText(text: string, medicationName: string): string {
+  private findRefillsInText(text: string, medicationName: string): number {
     const medIndex = text.indexOf(medicationName);
-    if (medIndex === -1) return '0';
+    if (medIndex === -1) return 0;
     
     const chunkSize = 200;
     const textChunk = text.slice(medIndex, medIndex + chunkSize);
@@ -712,11 +712,11 @@ export class PrescriptionOCR {
     for (const pattern of refillPatterns) {
       const match = textChunk.match(pattern);
       if (match && match[1]) {
-        return match[1];
+        return parseInt(match[1]) || 0;
       }
     }
     
-    return '0';
+    return 0;
   }
   
   /**

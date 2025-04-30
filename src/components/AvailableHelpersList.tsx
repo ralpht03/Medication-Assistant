@@ -25,7 +25,9 @@ export default function AvailableHelpersList() {
   const fetchAvailableHelpers = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/patient/available-helpers');
+      const response = await fetch('/api/patient/available-helpers', {
+        credentials: 'include'
+      });
       
       if (!response.ok) {
         const errorData = await response.json();

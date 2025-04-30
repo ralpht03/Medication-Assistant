@@ -87,7 +87,7 @@ export default function AdminPatientsPage() {
 
       const user = JSON.parse(userStr);
       const adminId = user.rowKey || user.id;
-
+      console.log('Admin ID:', adminId);
       const response = await fetch('/api/admin/patients/remove', {
         method: 'POST',
         headers: {

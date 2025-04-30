@@ -147,9 +147,16 @@ export async function DELETE(request: NextRequest) {
       inv.inviteeUserId === helperId || inv.inviteeEmail === helper.email
     );
     
-    await Promise.all(helperInvitations.map(inv => 
-      invitationService.deleteEntity('INVITATION', inv.RowKey)
-    ));
+    await Promise.all(helperInvitations.map(async inv => {
+      if (inv.RowKey || inv.rowKey) {
+        try {
+          await invitationService.deleteEntity('INVITATION', inv.RowKey || inv.rowKey);
+        } catch (error) {
+          console.warn('Failed to delete invitation:', inv.RowKey || inv.rowKey, error);
+          // Continue with other deletions even if one fails
+        }
+      }
+    }));
 
     return NextResponse.json({
       message: 'Helper removed successfully'

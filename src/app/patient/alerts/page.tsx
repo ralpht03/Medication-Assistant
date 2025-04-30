@@ -74,10 +74,10 @@ export default function PatientAlertsPage() {
           
           return {
             ...alert,
-            id: alert.RowKey || `alert-${Date.now()}-${Math.random()}`,
+            id: alert.RowKey || alert.rowKey,
             time: timeString
           }
-        })
+        }).filter((alert): alert is Alert => alert !== null)
         setAlerts(transformedAlerts)
       } catch (error) {
         console.error('Error fetching alerts:', error)

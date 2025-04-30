@@ -89,7 +89,8 @@ export async function POST(request: Request) {
       verificationMethod: 'helper',
       isCorrectDose: true,
       patientName: `${patientEntity.firstName} ${patientEntity.lastName}`,
-      verifiedBy: `${helperEntity.firstName} ${helperEntity.lastName}`
+      verifiedBy: `${helperEntity.firstName} ${helperEntity.lastName}`,
+      prescribingDoctor: medicationEntity.prescribingDoctor as string || ''
     };
 
     console.log('Creating verification log:', verificationLog)

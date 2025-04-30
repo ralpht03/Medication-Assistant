@@ -27,7 +27,12 @@ export class AzureTableService {
   }
 
   async getEntity(partitionKey: string, rowKey: string) {
-    return await this.tableClient.getEntity(partitionKey, rowKey);
+    try {
+      return await this.tableClient.getEntity(partitionKey, rowKey);
+    } catch (error) {
+      console.error('Error getting entity:', error);
+      return null;
+    }
   }
 
   async queryEntities<T extends object>(query: string | ReturnType<typeof odata>): Promise<T[]> {
@@ -35,7 +40,7 @@ export class AzureTableService {
       console.log('Executing query:', query);
       const entities: T[] = [];
       const iterator = this.tableClient.listEntities<T>({
-        queryOptions: { filter: typeof query === 'string' ? query : query.toString() }
+        queryOptions: { filter: typeof query === 'string' ? query : String(query) }
       });
       
       for await (const entity of iterator) {
@@ -46,7 +51,7 @@ export class AzureTableService {
       return entities;
     } catch (error) {
       console.error('Error querying entities:', error);
-      throw error;
+      return [];
     }
   }
 

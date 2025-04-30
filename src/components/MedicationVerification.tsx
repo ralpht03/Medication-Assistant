@@ -75,6 +75,9 @@ export default function MedicationVerification({
             Last taken: {format(new Date(medication.lastTaken), 'MMM d, h:mm a')}
           </p>
         )}
+        <p className="text-sm text-gray-500">
+          Recommended Dose: {medication.recommendedPillCount || '1'} pill(s)
+        </p>
       </div>
 
       {isHelper && (

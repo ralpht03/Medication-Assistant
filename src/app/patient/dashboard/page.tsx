@@ -57,6 +57,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const [isNavigating, setIsNavigating] = useState(false)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   const fetchDashboardData = async () => {
     try {
@@ -143,44 +144,53 @@ export default function DashboardPage() {
         unreadAlerts: alertsData.length
       });
       
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      setError('Failed to load dashboard data');
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    if (!userStr) {
-      router.push('/login');
-      return;
-    }
     fetchDashboardData();
-  }, [router]);
+  }, [refreshTrigger]);
 
-  const handleMedicationAction = async (medicationId: string, action: 'take' | 'snooze') => {
+  const handleMedicationAction = async (medicationId: string, action: 'taken' | 'missed' | 'skipped') => {
     try {
-      if (action === 'snooze') {
-        // Handle snooze action if needed
-        console.log('Medication snoozed:', medicationId);
+      const userStr = localStorage.getItem('user');
+      if (!userStr) {
+        throw new Error('User not found');
       }
-      
-      // For 'take' action, we don't need to do anything here
-      // The CameraModal component will handle the API call with pill verification data
-      
-      // Refresh dashboard data after action
-      await fetchDashboardData();
-      
-      // Add a small delay to ensure the API has processed the verification
-      setTimeout(async () => {
-        await fetchDashboardData();
-      }, 1000);
-    } catch (error) {
-      console.error('Error handling medication action:', error);
+
+      const user = JSON.parse(userStr);
+      const patientId = user.id || user.rowKey || user.RowKey;
+
+      const response = await fetch('/api/adherence', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          medicationId,
+          patientId,
+          status: action,
+          patientName: `${user.firstName} ${user.lastName}`
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update medication status');
+      }
+
+      // Trigger a refresh of the dashboard data
+      setRefreshTrigger(prev => prev + 1);
+    } catch (err) {
+      console.error('Error updating medication status:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update medication status');
     }
-  }
+  };
 
   // Add navigation handler
   const handleCameraClick = () => {
@@ -241,8 +251,8 @@ export default function DashboardPage() {
                     key={medication.RowKey}
                     medication={medication}
                     showActions={true}
-                    onTake={() => handleMedicationAction(medication.RowKey, 'take')}
-                    onSnooze={() => handleMedicationAction(medication.RowKey, 'snooze')}
+                    onTake={() => handleMedicationAction(medication.RowKey, 'taken')}
+                    onSnooze={() => handleMedicationAction(medication.RowKey, 'missed')}
                   />
                 ))}
               </div>

@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react';
 
 interface Invitation {
-  id: string;
+  RowKey: string;
   inviteeEmail: string;
   inviteeRole: string;
+  inviteeName: string;
   status: string;
   createdAt: string;
   expiresAt: string;
@@ -159,7 +160,7 @@ export default function InvitationList({ invitations, onInvitationClick, onRefre
       )}
       {invitations.map((invitation) => (
         <div
-          key={invitation.id}
+          key={invitation.RowKey}
           className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:border-blue-500 transition-colors"
         >
           <div className="flex justify-between items-start">
@@ -168,10 +169,10 @@ export default function InvitationList({ invitations, onInvitationClick, onRefre
               onClick={() => onInvitationClick(invitation)}
             >
               <h3 className="font-medium text-gray-900">
-                {invitation.patientName || 'Unnamed Patient'}
+                {invitation.inviteeName || 'Unnamed Patient'}
               </h3>
               <p className="text-sm text-gray-500">
-                {invitation.email}
+                {invitation.inviteeEmail}
               </p>
               <p className="text-sm text-gray-500">
                 Status: {invitation.status}
@@ -180,7 +181,7 @@ export default function InvitationList({ invitations, onInvitationClick, onRefre
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handleRemove(invitation.id);
+                handleRemove(invitation.RowKey);
               }}
               disabled={isLoading}
               className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"

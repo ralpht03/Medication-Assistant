@@ -5,6 +5,18 @@ import PageLayout from '@/components/PageLayout'
 import { Bell, Users, AlertTriangle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { TableClient } from '@azure/data-tables'
+import { Alerts } from '@/lib/types'
+
+interface AlertFilters {
+  status?: 'all' | 'unread' | 'read';
+  priority?: 'high' | 'medium' | 'low';
+}
+
+interface HelperDashboardData {
+  patients: any[];
+  alerts: Alerts[];
+  invitations: any[];
+}
 
 export default function HelperDashboardPage() {
   const router = useRouter()
@@ -14,57 +26,105 @@ export default function HelperDashboardPage() {
     pendingInvitations: 0
   })
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [dashboardData, setDashboardData] = useState<HelperDashboardData | null>(null)
+  const [alerts, setAlerts] = useState<Alerts[]>([])
+  const [filters, setFilters] = useState<AlertFilters>({
+    status: 'unread',
+    priority: 'high'
+  })
 
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        setLoading(true)
-        const userStr = localStorage.getItem('user')
-        if (!userStr) {
-          throw new Error('User not found')
-        }
+    fetchDashboardData()
+    fetchAlerts()
+    
+    // Set up polling for alerts
+    const interval = setInterval(() => {
+      fetchAlerts()
+    }, 30000) // Poll every 30 seconds
 
-        const user = JSON.parse(userStr)
-        const helperId = user.id || user.rowKey
+    return () => clearInterval(interval)
+  }, [filters])
 
-        // Fetch data from existing APIs
-        const [patientsResponse, alertsResponse, invitationsResponse] = await Promise.all([
-          fetch(`/api/helper/patients`),
-          fetch(`/api/alerts?userId=${helperId}&role=helper&status=unread`),
-          fetch(`/api/helper/invitations`)
-        ])
-
-        if (!patientsResponse.ok) {
-          throw new Error(`Failed to fetch patients: ${patientsResponse.status} ${patientsResponse.statusText}`)
-        }
-        if (!alertsResponse.ok) {
-          throw new Error(`Failed to fetch alerts: ${alertsResponse.status} ${alertsResponse.statusText}`)
-        }
-        if (!invitationsResponse.ok) {
-          throw new Error(`Failed to fetch invitations: ${invitationsResponse.status} ${invitationsResponse.statusText}`)
-        }
-
-        const [patients, alerts, invitations] = await Promise.all([
-          patientsResponse.json(),
-          alertsResponse.json(),
-          invitationsResponse.json()
-        ])
-
-        setStats({
-          totalPatients: patients.patients?.length || 0,
-          unreadAlerts: alerts.length,
-          pendingInvitations: invitations.length
-        })
-      } catch (err) {
-        console.error('Error fetching stats:', err)
-        // Don't show error message, just keep the counts at 0
-      } finally {
-        setLoading(false)
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true)
+      const userStr = localStorage.getItem('user')
+      if (!userStr) {
+        throw new Error('User not found')
       }
-    }
 
-    fetchStats()
-  }, [])
+      const user = JSON.parse(userStr)
+      const helperId = user.id || user.rowKey
+
+      // Fetch data from existing APIs
+      const [patientsResponse, alertsResponse, invitationsResponse] = await Promise.all([
+        fetch(`/api/helper/patients`),
+        fetch(`/api/alerts?userId=${helperId}&role=helper&status=unread`),
+        fetch(`/api/helper/invitations`)
+      ])
+
+      if (!patientsResponse.ok) {
+        throw new Error(`Failed to fetch patients: ${patientsResponse.status} ${patientsResponse.statusText}`)
+      }
+      if (!alertsResponse.ok) {
+        console.error(`Failed to fetch alerts: ${alertsResponse.status} ${alertsResponse.statusText}`)
+        setAlerts([])
+      }
+      if (!invitationsResponse.ok) {
+        throw new Error(`Failed to fetch invitations: ${invitationsResponse.status} ${invitationsResponse.statusText}`)
+      }
+
+      const [patients, alerts, invitations] = await Promise.all([
+        patientsResponse.json(),
+        alertsResponse.ok ? alertsResponse.json() : Promise.resolve([]),
+        invitationsResponse.json()
+      ])
+
+      setStats({
+        totalPatients: patients.patients?.length || 0,
+        unreadAlerts: Array.isArray(alerts) ? alerts.length : 0,
+        pendingInvitations: invitations.length || 0
+      })
+    } catch (err) {
+      console.error('Error fetching stats:', err)
+      // Don't show error message, just keep the counts at 0
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchAlerts = async () => {
+    try {
+      const userStr = localStorage.getItem('user')
+      if (!userStr) {
+        throw new Error('User not found')
+      }
+
+      const user = JSON.parse(userStr)
+      const helperId = user.id || user.rowKey
+
+      const response = await fetch(`/api/alerts?userId=${helperId}&role=helper&status=${filters.status}`)
+      if (!response.ok) {
+        console.error(`Failed to fetch alerts: ${response.status} ${response.statusText}`)
+        setAlerts([])
+        return
+      }
+
+      const alerts = await response.json()
+      if (Array.isArray(alerts)) {
+        setAlerts(alerts)
+        // Update the unread alerts count in stats
+        setStats(prev => ({
+          ...prev,
+          unreadAlerts: alerts.filter(alert => !alert.read).length
+        }))
+      }
+    } catch (err) {
+      console.error('Error fetching alerts:', err)
+      setAlerts([])
+    }
+  }
 
   return (
     <PageLayout userType="helper" title="Helper Dashboard">

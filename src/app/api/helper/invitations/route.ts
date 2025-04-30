@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { InvitationService } from '@/lib/azure/invitation-service';
+import { InvitationService, Invitation } from '@/lib/azure/invitation-service';
 import { AzureTableService } from '@/lib/azure/table-service';
 import { getSession } from '@/lib/auth';
 import { TableClient, odata } from '@azure/data-tables';
@@ -71,31 +71,36 @@ export async function GET(request: NextRequest) {
     
     // Get patient details for linked patients
     const linkedPatientsDetails = await Promise.all(linkedPatients.map(async (patientId: string) => {
-      const patientFilter = odata`PartitionKey eq 'patient' and RowKey eq ${patientId}`;
-      let patientUser = null;
-      
       try {
-        const patientEntities = usersTableClient.listEntities({ queryOptions: { filter: patientFilter } });
+        const patientFilter = odata`PartitionKey eq 'patient' and RowKey eq ${patientId}`;
+        let patientUser = null;
         
-        for await (const entity of patientEntities) {
-          patientUser = entity;
-          break;
+        try {
+          const patientEntities = usersTableClient.listEntities({ queryOptions: { filter: patientFilter } });
+          
+          for await (const entity of patientEntities) {
+            patientUser = entity;
+            break;
+          }
+        } catch (error) {
+          console.error(`Error finding patient ${patientId}:`, error);
+          return null;
         }
-      } catch (error) {
-        console.error(`Error finding patient ${patientId}:`, error);
-        return null;
-      }
 
-      if (!patientUser) {
-        console.error(`Patient ${patientId} not found`);
+        if (!patientUser) {
+          console.error(`Patient ${patientId} not found`);
+          return null;
+        }
+        
+        return {
+          id: patientId,
+          name: `${patientUser.firstName} ${patientUser.lastName}`,
+          email: patientUser.email
+        };
+      } catch (error) {
+        console.error(`Error processing patient ${patientId}:`, error);
         return null;
       }
-      
-      return {
-        id: patientId,
-        name: `${patientUser.firstName} ${patientUser.lastName}`,
-        email: patientUser.email
-      };
     }));
 
     // Filter out any null entries from failed patient lookups

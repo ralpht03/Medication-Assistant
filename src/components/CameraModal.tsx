@@ -132,7 +132,8 @@ const CameraModal: React.FC<CameraModalProps> = ({ isOpen, onClose, medication, 
       pillCount: count,
       recommendedPillCount: medication.recommendedPillCount,
       status: 'taken',
-      notes: !verificationResult?.pill_name || bypassVerification ? 'Bypassed verification' : `Identified as: ${verificationResult.pill_name}`
+      notes: !verificationResult?.pill_name || bypassVerification ? 'Bypassed verification by helper' : `Identified as: ${verificationResult.pill_name}`,
+      bypassVerification: bypassVerification
     });
     onClose();
   };

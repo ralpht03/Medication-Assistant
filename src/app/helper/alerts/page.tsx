@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { AlertCircle, Filter } from 'lucide-react'
 import PageLayout from '@/components/PageLayout'
 import AlertsPanel from '@/components/AlertsPanel'
@@ -28,7 +28,7 @@ export default function HelperAlertsPage() {
     fetchAlerts()
   }, [filters])
 
-  const fetchAlerts = async () => {
+  const fetchAlerts = useCallback(async () => {
     try {
       setLoading(true)
       const userStr = localStorage.getItem('user')
@@ -44,9 +44,9 @@ export default function HelperAlertsPage() {
         role: 'helper'
       })
 
-      if (filters.priority) params.append('type', filters.priority)
+      if (filters.priority) params.append('priority', filters.priority)
       if (filters.type) params.append('type', filters.type)
-      if (filters.read !== undefined) params.append('status', filters.read ? 'read' : 'unread')
+      if (filters.read !== undefined) params.append('read', filters.read.toString())
 
       const response = await fetch(`/api/alerts?${params.toString()}`)
       if (!response.ok) {
@@ -78,7 +78,7 @@ export default function HelperAlertsPage() {
         
         return {
           ...alert,
-          id: alert.RowKey || `alert-${Date.now()}-${Math.random()}`,
+          id: alert.RowKey || alert.rowKey,
           time: timeString
         }
       })
@@ -88,9 +88,9 @@ export default function HelperAlertsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filters])
 
-  const handleAlertAction = async (alertId: string, action: 'acknowledge') => {
+  const handleAlertAction = async (alertId: string, action: 'acknowledge' | 'refresh') => {
     try {
       const userStr = localStorage.getItem('user')
       if (!userStr) {
@@ -98,27 +98,33 @@ export default function HelperAlertsPage() {
       }
 
       const user = JSON.parse(userStr)
-      const response = await fetch('/api/alerts', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: user.id || user.rowKey,
-          alertId,
-          role: 'helper'
+      
+      if (action === 'acknowledge') {
+        const response = await fetch('/api/alerts', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: user.id || user.rowKey,
+            alertId,
+            role: 'helper'
+          })
         })
-      })
 
-      if (!response.ok) {
-        throw new Error('Failed to mark alert as read')
+        if (!response.ok) {
+          throw new Error('Failed to mark alert as read')
+        }
+
+        setAlerts(alerts.map(alert => 
+          alert.id === alertId ? { ...alert, read: true, helperAck: true } : alert
+        ))
+      } else if (action === 'refresh') {
+        // For refresh action, just fetch the latest alerts
+        await fetchAlerts()
       }
-
-      setAlerts(alerts.map(alert => 
-        alert.id === alertId ? { ...alert, read: true } : alert
-      ))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to mark alert as read')
+      setError(err instanceof Error ? err.message : 'Failed to perform action')
     }
   }
 

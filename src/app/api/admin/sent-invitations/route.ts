@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { InvitationService } from '@/lib/azure/invitation-service';
+import { InvitationService, Invitation } from '@/lib/azure/invitation-service';
 import { AzureTableService } from '@/lib/azure/table-service';
 import { getSession } from '@/lib/auth';
 
@@ -22,13 +22,13 @@ export async function GET(request: NextRequest) {
     console.log('Fetching invitations for admin:', adminId);
     
     // Get invitations sent by this admin
-    const invitations = await invitationService.getInvitationsByInviter(adminId as string);
-    console.log('Found invitations:', invitations.length);
+    const invitations = await invitationService.getInvitationsByInviter(adminId as string) as Invitation[];
+    console.log('Found invitations:', invitations);
     
     // Format the response
     const formattedInvitations = invitations.map(inv => ({
-      id: inv.RowKey,
-      email: inv.inviteeEmail,
+      RowKey: inv.rowKey,
+      inviteeEmail: inv.inviteeEmail,
       inviteeRole: inv.inviteeRole,
       status: inv.status,
       createdAt: inv.createdAt,
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       inviteeName: inv.inviteeName || undefined
     }));
 
-    console.log('Formatted invitations:', formattedInvitations.length);
+    console.log('Formatted invitations:', formattedInvitations);
     return NextResponse.json({
       invitations: formattedInvitations
     });

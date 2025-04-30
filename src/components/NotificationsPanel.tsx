@@ -44,7 +44,12 @@ const NotificationsPanel = ({
 
   const unreadCount = notifications.filter(n => !n.read).length
 
-  const groupedNotifications = filteredNotifications.reduce((groups, notification) => {
+  // Sort notifications by timestamp in descending order (most recent first)
+  const sortedNotifications = [...filteredNotifications].sort((a, b) => 
+    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  )
+
+  const groupedNotifications = sortedNotifications.reduce((groups, notification) => {
     const group = groups.find(g => g.type === notification.type)
     if (group) {
       group.notifications.push(notification)
@@ -116,7 +121,7 @@ const NotificationsPanel = ({
                         onClick={notification.isAdminInvite ? () => handleNotificationAction(notification) : undefined}
                       />
                       {notification.isAdminInvite && (
-                        <div className="absolute top-2 right-2">
+                        <div className="absolute bottom-2 right-2">
                           <button
                             onClick={() => router.push('/patient/invitations')}
                             className="p-1 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
@@ -126,7 +131,7 @@ const NotificationsPanel = ({
                           </button>
                         </div>
                       )}
-                      {onDismiss && !notification.isAdminInvite && (
+                      {onDismiss && (
                         <button
                           onClick={() => {
                             console.log('Dismissing notification with ID:', notification.id, 'Full object:', notification)

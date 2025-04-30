@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { PredictionAPIClient } from "@azure/cognitiveservices-customvision-prediction";
 import { ApiKeyCredentials } from "@azure/ms-rest-js";
-import { VerificationLogs } from '@/lib/types';
+import { VerificationLogs, Alerts } from '@/lib/types';
 import { AzureTableService } from '@/lib/azure/table-service';
 
 // Validate and log environment variables in development
@@ -121,6 +121,52 @@ export async function POST(request: Request) {
         : 'Low confidence detection. Please try again with better lighting',
       medication: medication
     };
+    
+    // Only create alert if the detected pill doesn't match the expected medication
+    if (result.pill_name !== medication.name) {
+      const alertsService = new AzureTableService('Alerts');
+      const timestamp = new Date().toISOString();
+      
+      const alert: Alerts = {
+        PartitionKey: patientId,
+        RowKey: `pill_identification_failed-${timestamp}`,
+        Timestamp: timestamp,
+        type: 'pill_identification_failed',
+        message: `Wrong pill detected. Expected: ${medication.name}, Detected: ${result.pill_name}. Please verify you are taking the correct medication.`,
+        priority: 'high',
+        medicationId: medicationId,
+        patientId: patientId,
+        read: false,
+        adminAck: false,
+        patientAck: false,
+        helperAck: false
+      };
+      
+      await alertsService.createEntity(alert);
+    }
+    
+    // Create alert if pill identification was skipped
+    if (requestData.bypassVerification) {
+      const alertsService = new AzureTableService('Alerts');
+      const timestamp = new Date().toISOString();
+      
+      const alert: Alerts = {
+        PartitionKey: patientId,
+        RowKey: `pill_identification_skipped-${timestamp}`,
+        Timestamp: timestamp,
+        type: 'pill_identification_skipped',
+        message: `Pill identification was skipped for ${medication.name}. Please ensure you are taking the correct medication.`,
+        priority: 'high',
+        medicationId: medicationId,
+        patientId: patientId,
+        read: false,
+        adminAck: false,
+        patientAck: false,
+        helperAck: false
+      };
+      
+      await alertsService.createEntity(alert);
+    }
     
     console.log('Verification result:', result);
 

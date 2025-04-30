@@ -35,56 +35,83 @@ export default function AdminAlertsPage() {
         return
       }
 
-      const queryParams = new URLSearchParams()
-      queryParams.append('userId', user.id)
-      queryParams.append('role', 'admin')
-      if (filters.priority) queryParams.append('type', filters.priority)
-      if (filters.type) queryParams.append('type', filters.type)
-      if (filters.read !== undefined) queryParams.append('status', filters.read ? 'read' : 'unread')
+      // First, get the admin's linked patients
+      const usersResponse = await fetch(`/api/admin/patients?adminId=${user.id}`)
+      if (!usersResponse.ok) {
+        throw new Error('Failed to fetch linked patients')
+      }
+      const { patients: linkedPatients } = await usersResponse.json()
 
-      const response = await fetch(`/api/alerts?${queryParams.toString()}`)
-      const data = await response.json()
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Unable to load alerts. Please try again later.')
+      if (!Array.isArray(linkedPatients)) {
+        throw new Error('Invalid response format from server')
       }
-      
-      if (!data || data.length === 0) {
-        setAlerts([])
-        setError(null)
-        return
-      }
-      
-      // Transform the data to match our Alert interface
-      const transformedAlerts = data.map((alert: Alerts) => {
-        let timeString = 'Unknown time'
-        try {
-          const timestamp = alert.timestamp || alert.Timestamp
-          if (timestamp) {
-            const date = new Date(timestamp)
-            if (!isNaN(date.getTime())) {
-              timeString = date.toLocaleString([], { 
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit', 
-                minute: '2-digit',
-                hour12: true 
-              })
-            }
-          }
-        } catch (e) {
-          console.warn('Error parsing timestamp:', e)
+
+      // Fetch alerts for each linked patient
+      let allAlerts: Alert[] = []
+      for (const patient of linkedPatients) {
+        const queryParams = new URLSearchParams()
+        queryParams.append('userId', patient.id)
+        queryParams.append('role', 'admin')
+        if (filters.priority) queryParams.append('type', filters.priority)
+        if (filters.type) queryParams.append('type', filters.type)
+        if (filters.read !== undefined) queryParams.append('status', filters.read ? 'read' : 'unread')
+
+        const response = await fetch(`/api/alerts?${queryParams.toString()}`)
+        if (!response.ok) {
+          throw new Error('Failed to fetch alerts')
         }
+        const data = await response.json()
         
-        return {
-          ...alert,
-          id: alert.RowKey || `alert-${Date.now()}-${Math.random()}`,
-          time: timeString
+        if (data && data.length > 0) {
+          // Transform the data to match our Alert interface
+          const transformedAlerts = data.map((alert: Alerts) => {
+            let timeString = 'Unknown time'
+            try {
+              const timestamp = alert.timestamp || alert.Timestamp
+              if (timestamp) {
+                const date = new Date(timestamp)
+                if (!isNaN(date.getTime())) {
+                  timeString = date.toLocaleString([], { 
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: true 
+                  })
+                }
+              }
+            } catch (e) {
+              console.warn('Error parsing timestamp:', e)
+            }
+            
+            if (!alert.rowKey) {
+              console.error('Alert missing RowKey:', alert)
+              return null
+            }
+            
+            return {
+              ...alert,
+              id: alert.rowKey,
+              time: timeString,
+              patientName: patient.name || 'Patient' // Use the name property instead of firstName and lastName
+            }
+          }).filter((alert: Alert | null): alert is Alert => alert !== null)
+          
+          allAlerts = [...allAlerts, ...transformedAlerts]
         }
-      })
+      }
       
-      setAlerts(transformedAlerts)
+      // Sort alerts by timestamp, newest first
+      allAlerts.sort((a, b) => new Date(b.Timestamp).getTime() - new Date(a.Timestamp).getTime())
+      
+      // Add patient name to each alert
+      const alertsWithPatientNames = allAlerts.map(alert => ({
+        ...alert,
+        patientName: alert.patientName || 'Patient' // Use patientName from alert if available, otherwise use 'Patient'
+      }));
+
+      setAlerts(alertsWithPatientNames)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load alerts. Please try again later.')
@@ -94,7 +121,7 @@ export default function AdminAlertsPage() {
     }
   }
 
-  const handleAlertAction = async (alertId: string, action: 'acknowledge') => {
+  const handleAlertAction = async (alertId: string, action: 'acknowledge' | 'refresh') => {
     try {
       const userStr = localStorage.getItem('user')
       if (!userStr) {
@@ -102,25 +129,34 @@ export default function AdminAlertsPage() {
       }
 
       const user = JSON.parse(userStr)
-      const response = await fetch('/api/alerts', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: user.id || user.rowKey,
-          alertId,
-          role: 'admin'
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to mark alert as read')
+      const alert = alerts.find((a: Alert) => a.id === alertId)
+      if (!alert) {
+        throw new Error('Alert not found')
       }
 
-      setAlerts(alerts.map(alert => 
-        alert.id === alertId ? { ...alert, read: true } : alert
-      ))
+      if (action === 'acknowledge') {
+        const response = await fetch('/api/alerts', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: alert.patientId,
+            alertId,
+            role: 'admin'
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to mark alert as read')
+        }
+
+        setAlerts(alerts.map((alert: Alert) => 
+          alert.id === alertId ? { ...alert, read: true, adminAck: true } : alert
+        ))
+      } else if (action === 'refresh') {
+        await fetchAlerts()
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to mark alert as read')
     }

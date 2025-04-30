@@ -322,12 +322,12 @@ export function handlePrescriptionUpload(event: React.ChangeEvent<HTMLInputEleme
                 startDate: today.toISOString().split('T')[0],
                 endDate: endDate.toISOString().split('T')[0],
                 verificationMethod: 'prescription-upload',
-                prescribingDoctor: extractPrescribingDoctor(result.patientName), // Try to extract doctor name if available
-                pharmacy: '', // Could be enhanced with pharmacy OCR in the future
+                prescribingDoctor: extractPrescribingDoctor(result.patientName),
+                pharmacy: '',
                 notes: med.instructions,
                 refillsRemaining: med.refills,
-                lastFilled: today.toISOString().split('T')[0], // Assuming the prescription was just filled
-                time: "08:00" // Default time
+                lastFilled: today.toISOString().split('T')[0],
+                time: "08:00"
               };
             });
             

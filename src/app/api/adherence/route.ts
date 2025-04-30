@@ -6,6 +6,7 @@ import { createTableClient } from "@/lib/azure-table-utils";
 // Constants for table names
 const VERIFICATION_LOGS_TABLE = 'VerificationLogs';
 const ALERTS_TABLE = 'Alerts';
+const USERS_TABLE = 'Users';
 
 // Table services
 const verificationLogsService = new AzureTableService(VERIFICATION_LOGS_TABLE);
@@ -55,9 +56,9 @@ export async function GET(req: Request) {
     const verificationLogs: VerificationLogs[] = [];
     for (const entity of verificationLogsEntities) {
       verificationLogs.push({
-        PartitionKey: entity.PartitionKey as string,
-        RowKey: entity.RowKey as string,
-        Timestamp: entity.Timestamp as string,
+        PartitionKey: entity.partitionKey as string,
+        RowKey: entity.rowKey as string,
+        Timestamp: entity.timestamp as string,
         medicationName: entity.medicationName as string,
         medicationId: entity.medicationId as string,
         pillCount: entity.pillCount as string,
@@ -177,42 +178,11 @@ export async function POST(req: Request) {
       const timestamp = now.toISOString();
       const rowKey = `${medicationId}-${now.getTime()}`;
 
-      // Check for duplicate verification within the last 15 minutes
-      const fifteenMinutesAgo = new Date(now);
-      fifteenMinutesAgo.setMinutes(fifteenMinutesAgo.getMinutes() - 15);
-      
-      const duplicateFilter = `PartitionKey eq '${patientId}' and medicationId eq '${medicationId}' and Timestamp ge datetime'${fifteenMinutesAgo.toISOString()}'`;
-      console.log('Checking for duplicates with filter:', duplicateFilter);
-      
-      const recentLogs = await verificationLogsService.queryEntities(duplicateFilter);
-      console.log('Found recent logs:', recentLogs);
-      
-      if (recentLogs.length > 0) {
-        // If there's a duplicate, update the existing record instead of creating a new one
-        const existingLog = recentLogs[0];
-        const updatedLog = {
-          ...existingLog,
-          status,
-          notes,
-          pillCount,
-          recommendedPillCount: medication.recommendedPillCount,
-          timeTaken: timestamp,
-          isCorrectDose: pillCount === medication.recommendedPillCount
-        };
-        
-        console.log('Updating existing log:', updatedLog);
-        await verificationLogsService.updateEntity(updatedLog);
-        
-        return NextResponse.json({ 
-          success: true,
-          message: "Verification log updated successfully",
-          timestamp
-        });
-      }
-
       // Check if this is an overdose or underdose
-      const isOverdose = parseInt(pillCount) > parseInt(medication.recommendedPillCount);
-      const isUnderdose = parseInt(pillCount) < parseInt(medication.recommendedPillCount);
+      const recommendedCount = parseInt(medication.recommendedPillCount || '0');
+      const actualCount = parseInt(pillCount || '0');
+      const isOverdose = actualCount > recommendedCount;
+      const isUnderdose = actualCount < recommendedCount;
       const isCorrectDose = !isOverdose && !isUnderdose;
 
       // Create verification log
@@ -227,10 +197,11 @@ export async function POST(req: Request) {
         timeTaken: timestamp,
         status: status,
         notes: notes,
-        verificationMethod: bypassVerification ? 'manual' : 'camera',
+        verificationMethod: verifiedBy === 'self' ? (bypassVerification ? 'manual' : 'camera') : 'helper',
         isCorrectDose: isCorrectDose,
         patientName: data.patientName || 'Unknown',
-        verifiedBy: data.verifiedBy || 'self'
+        verifiedBy: data.verifiedBy || 'self',
+        prescribingDoctor: medicationEntity.prescribingDoctor as string || ''
       };
 
       console.log('Creating new verification log:', verificationLog);
@@ -260,30 +231,49 @@ export async function POST(req: Request) {
       // Create alerts for different scenarios
       const alerts: Alerts[] = [];
       
-      // If verification was bypassed, create an alert
-      if (bypassVerification) {
+      // If verification was bypassed or done by helper, create alert
+      if (bypassVerification || verificationLog.verificationMethod === 'helper') {
+        // Get helper's name if verification was done by a helper
+        let helperName = '';
+        if (verificationLog.verificationMethod === 'helper') {
+          const usersService = new AzureTableService(USERS_TABLE);
+          const helper = await usersService.getEntity('helper', verifiedBy);
+          if (helper) {
+            helperName = `${helper.firstName} ${helper.lastName}`.trim();
+          }
+        }
+
+        const bypassMessage = verificationLog.verificationMethod === 'helper' 
+          ? `Medication taken and verified by helper ${helperName} for ${medication.name}. Reason: ${notes}`
+          : `Medication verification bypassed by helper ${helperName} for ${medication.name}. Reason: ${notes}`;
+        
+        // Create alert under patient's partition key
         const bypassAlert: Alerts = {
           PartitionKey: patientId,
           RowKey: `bypass-${timestamp}`,
           Timestamp: timestamp,
           type: 'verification_bypass',
-          message: `Medication verification bypassed for ${medication.name}. Reason: ${notes}`,
+          message: bypassMessage,
           priority: getAlertPriority('verification_bypass'),
           medicationId: medicationId,
           patientId: patientId,
-          read: false
+          read: false,
+          adminAck: false,
+          patientAck: false,
+          helperAck: false
         };
         alerts.push(bypassAlert);
       }
       
-      // If overdose or underdose, create alerts for both patient and admin
+      // If overdose or underdose, create alerts
       if (isOverdose || isUnderdose) {
         const alertType = isOverdose ? 'overdose' : 'underdose';
         const alertMessage = isOverdose
-            ? `Overdose detected for ${medication.name}. Taken: ${pillCount}, Recommended: ${medication.recommendedPillCount}`
-          : `Underdose detected for ${medication.name}. Taken: ${pillCount}, Recommended: ${medication.recommendedPillCount}`;
+            ? `Overdose detected for ${medication.name}. Taken: ${actualCount}, Recommended: ${recommendedCount}`
+          : `Underdose detected for ${medication.name}. Taken: ${actualCount}, Recommended: ${recommendedCount}`;
         
-        const doseAlert: Alerts = {
+        // Create alert under patient's partition key
+        const alert: Alerts = {
           PartitionKey: patientId,
           RowKey: `${alertType}-${timestamp}`,
           Timestamp: timestamp,
@@ -292,15 +282,23 @@ export async function POST(req: Request) {
           priority: getAlertPriority(alertType),
           medicationId: medicationId,
           patientId: patientId,
-          read: false
+          read: false,
+          adminAck: false,
+          patientAck: false,
+          helperAck: false
         };
-        
-        alerts.push(doseAlert);
+        alerts.push(alert);
       }
       
       // Save all alerts
       for (const alert of alerts) {
-        await alertsService.createEntity(alert);
+        try {
+          await alertsService.createEntity(alert);
+          console.log('Successfully created alert:', alert);
+        } catch (error) {
+          console.error('Failed to create alert:', error);
+          throw error;
+        }
       }
       
       return NextResponse.json({

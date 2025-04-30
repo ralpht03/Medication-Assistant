@@ -1,10 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+import { AzureTableService } from '@/lib/azure/table-service';
+import { Alerts, AzureTableUser } from '@/lib/types';
 import { createTableClient } from '@/lib/azure-table-utils';
+import { odata } from "@azure/data-tables";
 
 // Constants for table names
 const ALERTS_TABLE = 'Alerts';
 const MEDICATIONS_TABLE = 'Medications';
 const VERIFICATION_LOGS_TABLE = 'VerificationLogs';
+const USERS_TABLE = 'Users';
+
+const alertsTable = new AzureTableService(ALERTS_TABLE);
 
 /**
  * GET /api/alerts
@@ -18,209 +25,250 @@ const VERIFICATION_LOGS_TABLE = 'VerificationLogs';
  * - patientId: (optional) If adminId is provided, filter by patient ID
  * - action: (optional) 'check-missed-doses' to check for missed doses
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
+    const session = await getSession(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
-    const role = searchParams.get("role");
-    const type = searchParams.get("type");
-    const status = searchParams.get("status");
-    const limit = searchParams.get("limit") ? parseInt(searchParams.get("limit")!) : 50;
+    const userId = searchParams.get('userId');
+    const role = searchParams.get('role');
+    const status = searchParams.get('status');
 
     if (!userId || !role) {
-      return NextResponse.json(
-        { error: "User ID and role are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
-    // Create table clients
-    const alertsTable = createTableClient(ALERTS_TABLE);
-    const usersTable = createTableClient('Users');
-    
-    // Get user's linked patients/admins based on role
-    const user = await usersTable.getEntity(role, userId);
-    let linkedIds: string[] = [];
-    
-    if (role === 'admin') {
-      // Admin gets alerts for their linked patients
-      if (user.linkedPatients) {
-        linkedIds = JSON.parse(user.linkedPatients as string);
-      }
-    } else if (role === 'helper') {
-      // Helper gets alerts for their linked patients
-      if (user.linkedPatients) {
-        linkedIds = JSON.parse(user.linkedPatients as string);
-      }
-    } else if (role === 'patient') {
-      // Patient gets their own alerts
-      linkedIds = [userId];
-    }
-
-    // Build filter based on role and linked IDs
-    let filter = '';
-    if (role === 'admin' || role === 'helper') {
-      // For admin/helper, get alerts where partitionKey is in linkedIds
-      if (linkedIds.length > 0) {
-        filter = linkedIds.map(id => `PartitionKey eq '${id}'`).join(' or ');
-      } else {
-        // If no linked patients, return empty array
+    // For helpers, we need to get all alerts for their linked patients
+    if (role === 'helper') {
+      // Get the helper's linked patients
+      const usersService = new AzureTableService(USERS_TABLE);
+      const helper = await usersService.getEntity('helper', userId);
+      if (!helper) {
         return NextResponse.json([]);
       }
-    } else {
-      // For patient, get their own alerts
-      filter = `PartitionKey eq '${userId}'`;
-    }
 
-    if (type) {
-      filter += ` and type eq '${type}'`;
-    }
-
-    if (status === 'read') {
-      if (role === 'admin') {
-        filter += ` and (read eq true or adminAck eq true)`;
-      } else if (role === 'patient') {
-        filter += ` and (read eq true or patientAck eq true)`;
-      } else if (role === 'helper') {
-        filter += ` and (read eq true or helperAck eq true)`;
-      }
-    } else if (status === 'unread') {
-      if (role === 'admin') {
-        filter += ` and (read eq false and not(adminAck eq true))`;
-      } else if (role === 'patient') {
-        filter += ` and (read eq false and not(patientAck eq true))`;
-      } else if (role === 'helper') {
-        filter += ` and (read eq false and not(helperAck eq true))`;
-      }
-    }
-
-    // Fetch alerts
-    const alertEntities = alertsTable.listEntities({ queryOptions: { filter } });
-    
-    // Collect all unique patient IDs and alerts
-    const patientIds = new Set<string>();
-    const rawAlerts: any[] = [];
-    
-    for await (const entity of alertEntities) {
-      patientIds.add(entity.partitionKey as string);
-      rawAlerts.push(entity);
-      
-      if (rawAlerts.length >= limit) {
-        break;
-      }
-    }
-
-    // Batch fetch patient info
-    const patientInfoMap = new Map<string, { firstName: string; lastName: string }>();
-    if (patientIds.size > 0) {
-      for (const patientId of patientIds) {
-        try {
-          const patient = await usersTable.getEntity('patient', patientId);
-          patientInfoMap.set(patientId, {
-            firstName: patient.firstName as string,
-            lastName: patient.lastName as string
-          });
-        } catch (error) {
-          console.error('Error fetching patient info:', error);
-          patientInfoMap.set(patientId, { firstName: 'Unknown', lastName: 'Patient' });
+      let linkedPatients: string[] = [];
+      try {
+        if (helper.linkedPatients) {
+          linkedPatients = JSON.parse(helper.linkedPatients as string);
         }
+      } catch (error) {
+        console.error('Error parsing linkedPatients:', error);
+        return NextResponse.json([]);
       }
+
+      if (!Array.isArray(linkedPatients) || linkedPatients.length === 0) {
+        return NextResponse.json([]);
+      }
+
+      let allAlerts: Alerts[] = [];
+
+      // Fetch alerts for each linked patient
+      for (const patientId of linkedPatients) {
+        let filter = odata`PartitionKey eq '${patientId}'`;
+        const patientAlerts = await alertsTable.queryEntities(filter);
+        
+        // Get patient details for each alert
+        const patient = await usersService.getEntity('patient', patientId);
+        const patientName = patient ? `${patient.firstName} ${patient.lastName}`.trim() : 'Unknown Patient';
+        
+        // Add patient name to each alert
+        const alertsWithPatientName = (patientAlerts as Alerts[]).map(alert => ({
+          ...alert,
+          patientName
+        }));
+        
+        allAlerts = [...allAlerts, ...alertsWithPatientName];
+      }
+
+      // Sort alerts by timestamp (newest first)
+      allAlerts.sort((a, b) => new Date(b.Timestamp).getTime() - new Date(a.Timestamp).getTime());
+
+      // Filter alerts based on status and helper acknowledgment
+      const filteredAlerts = allAlerts.filter(alert => {
+        // If status is 'unread', only show unread and unacknowledged alerts
+        if (status === 'unread') {
+          return !alert.read && !alert.helperAck;
+        }
+        // Otherwise, show all unacknowledged alerts
+        return !alert.helperAck;
+      });
+
+      console.log('Helper alerts:', {
+        totalAlerts: allAlerts.length,
+        filteredAlerts: filteredAlerts.length,
+        linkedPatients,
+        status
+      });
+
+      return NextResponse.json(filteredAlerts);
     }
 
-    // Construct alerts with batched patient info
-    const processedAlerts = rawAlerts.map(entity => {
-      const patientInfo = patientInfoMap.get(entity.partitionKey as string) || { firstName: 'Unknown', lastName: 'Patient' };
-      return {
-        id: entity.rowKey,
-        type: entity.type,
-        message: entity.message,
-        timestamp: entity.timestamp || entity.Timestamp,
-        read: entity.read || false,
-        priority: entity.priority || 'medium',
-        medicationId: entity.medicationId,
-        medicationName: entity.medicationName,
-        patientId: entity.partitionKey,
-        patientName: `${patientInfo.firstName} ${patientInfo.lastName}`
-      };
+    // For other roles, use the standard filtering
+    let filter = odata`PartitionKey eq '${userId}'`;
+    if (status === 'unread') {
+      filter = odata`PartitionKey eq '${userId}' and read eq false`;
+    }
+
+    const alerts = await alertsTable.queryEntities(filter) as Alerts[];
+    
+    // Filter alerts based on role-specific acknowledgment
+    const filteredAlerts = alerts.filter(alert => {
+      switch (role) {
+        case 'admin':
+          return !alert.adminAck;
+        case 'patient':
+          return !alert.patientAck;
+        default:
+          return true;
+      }
     });
 
-    // Sort alerts by timestamp, newest first
-    processedAlerts.sort((a, b) =>
-      new Date(b.timestamp as string).getTime() - new Date(a.timestamp as string).getTime()
-    );
-
-    return NextResponse.json(processedAlerts);
+    return NextResponse.json(filteredAlerts);
   } catch (error) {
-    console.error("Fetch alerts error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch alerts" },
-      { status: 500 }
-    );
+    console.error('Error fetching alerts:', error);
+    return NextResponse.json({ error: 'Failed to fetch alerts' }, { status: 500 });
   }
 }
 
-// Mark alert as read/acknowledged
-export async function PATCH(request: Request) {
+export async function PATCH(request: NextRequest) {
   try {
-    const { userId, alertId, role } = await request.json();
+    const session = await getSession(request);
+    if (!session || !session.user || !session.user.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { userId, alertId, role } = body;
 
     if (!userId || !alertId || !role) {
-      return NextResponse.json(
-        { error: "User ID, Alert ID, and role are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
-    // Create table client
-    const alertsTable = createTableClient(ALERTS_TABLE);
+    // Get the alert using the patient's ID as PartitionKey and alertId as RowKey
+    const alertResponse = await alertsTable.getEntity(userId, alertId);
+    if (!alertResponse) {
+      return NextResponse.json({ error: 'Alert not found' }, { status: 404 });
+    }
+    const alert = alertResponse as unknown as Alerts;
 
-    // Get the current alert to preserve other fields
-    const alert = await alertsTable.getEntity(userId, alertId);
-    
-    // Update the alert's acknowledgment status based on role
-    const updateFields: any = {
-      PartitionKey: userId,
-      RowKey: alertId,
+    // For helpers, verify they are linked to the patient
+    if (role === 'helper') {
+      const usersService = new AzureTableService(USERS_TABLE);
+      const helperResponse = await usersService.getEntity('helper', session.user.id);
+      if (!helperResponse || !helperResponse.linkedPatients) {
+        return NextResponse.json({ error: 'Helper not found or has no linked patients' }, { status: 403 });
+      }
+      const helper = helperResponse as unknown as AzureTableUser;
+
+      const linkedPatients = JSON.parse(helper.linkedPatients as string);
+      if (!linkedPatients.includes(alert.patientId)) {
+        return NextResponse.json({ error: 'Helper is not linked to this patient' }, { status: 403 });
+      }
+    }
+
+    // Update the alert based on role
+    const update: Partial<Alerts> = {
+      read: true
     };
 
-    // Set role-specific acknowledgment
     switch (role) {
       case 'admin':
-        updateFields.adminAck = true;
+        update.adminAck = true;
         break;
       case 'patient':
-        updateFields.patientAck = true;
+        update.patientAck = true;
         break;
       case 'helper':
-        updateFields.helperAck = true;
+        update.helperAck = true;
         break;
-      default:
-        return NextResponse.json(
-          { error: "Invalid role" },
-          { status: 400 }
-        );
     }
 
-    // If all roles have acknowledged, mark as read
-    const allAcknowledged = (
-      (role === 'admin' || alert.adminAck) &&
-      (role === 'patient' || alert.patientAck) &&
-      (role === 'helper' || alert.helperAck)
-    );
-
-    if (allAcknowledged) {
-      updateFields.read = true;
-    }
-
-    await alertsTable.updateEntity(updateFields, "Merge");
+    await alertsTable.updateEntity({
+      ...alert,
+      ...update
+    } as Alerts);
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Update alert error:", error);
-    return NextResponse.json(
-      { error: "Failed to update alert" },
-      { status: 500 }
-    );
+    console.error('Error updating alert:', error);
+    return NextResponse.json({ error: 'Failed to update alert' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await getSession(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const alertId = searchParams.get('alertId');
+    const userId = searchParams.get('userId');
+
+    if (!alertId || !userId) {
+      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
+    }
+
+    // Get the alert to verify ownership
+    const alertResponse = await alertsTable.getEntity(alertId, alertId);
+    if (!alertResponse) {
+      return NextResponse.json({ error: 'Alert not found' }, { status: 404 });
+    }
+    const alert = alertResponse as unknown as Alerts;
+
+    // Verify the user has permission to delete this alert
+    if (alert.patientId !== userId) {
+      return NextResponse.json({ error: 'Unauthorized to delete this alert' }, { status: 403 });
+    }
+
+    await alertsTable.deleteEntity(alertId, alertId);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting alert:', error);
+    return NextResponse.json({ error: 'Failed to delete alert' }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getSession(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { patientId, medicationId, type, message, priority } = body;
+
+    if (!patientId || !medicationId || !type || !message || !priority) {
+      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
+    }
+
+    // Create a new alert
+    const alert: Alerts = {
+      PartitionKey: patientId,
+      RowKey: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      Timestamp: new Date().toISOString(),
+      patientId,
+      medicationId,
+      type,
+      message,
+      priority,
+      read: false,
+      adminAck: false,
+      patientAck: false,
+      helperAck: false
+    };
+
+    await alertsTable.createEntity(alert);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error creating alert:', error);
+    return NextResponse.json({ error: 'Failed to create alert' }, { status: 500 });
   }
 }
 
@@ -316,7 +364,10 @@ async function checkMissedDoses() {
                 type: 'missed_dose',
                 message: `You missed your scheduled dose of ${medicationName} at ${medication.time}. Please take it as soon as possible.`,
                 read: false,
-                priority: 'high'
+                priority: 'high',
+                adminAck: false,
+                patientAck: false,
+                helperAck: false
               };
               
               await alertsTable.createEntity(patientAlert);
@@ -344,7 +395,10 @@ async function checkMissedDoses() {
                       type: 'patient_missed_dose',
                       message: `Patient ${patientName} missed their scheduled dose of ${medicationName} at ${medication.time}.`,
                       read: false,
-                      priority: 'high'
+                      priority: 'high',
+                      adminAck: false,
+                      patientAck: false,
+                      helperAck: false
                     };
                     
                     await alertsTable.createEntity(adminAlert);
@@ -517,36 +571,6 @@ async function getAdminAlerts(request: Request) {
     console.error("Fetch admin alerts error:", error);
     return NextResponse.json(
       { error: "Failed to fetch admin alerts" },
-      { status: 500 }
-    );
-  }
-}
-
-// Delete alert
-export async function DELETE(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
-    const alertId = searchParams.get("alertId");
-
-    if (!userId || !alertId) {
-      return NextResponse.json(
-        { error: "User ID and Alert ID are required" },
-        { status: 400 }
-      );
-    }
-
-    // Create table client
-    const alertsTable = createTableClient(ALERTS_TABLE);
-    
-    // Delete the alert using the correct method signature
-    await alertsTable.deleteEntity(userId, alertId, { etag: "*" });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Delete alert error:", error);
-    return NextResponse.json(
-      { error: "Failed to delete alert" },
       { status: 500 }
     );
   }
