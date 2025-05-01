@@ -1,5 +1,3 @@
-// Load environment variables before exporting config
-require('dotenv').config({ path: '.env.production' });
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
