@@ -1,5 +1,5 @@
 import { getUserById } from './helper-access'
-import { createTableClient } from './azure-tables'
+import { createTableClient } from './azure-table-utils'
 import { Notification } from './types'
 import { v4 as uuidv4 } from 'uuid'
 
