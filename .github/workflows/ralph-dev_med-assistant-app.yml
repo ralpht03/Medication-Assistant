@@ -59,13 +59,14 @@ jobs:
         run: |
           find . -type f -name '*:*' -exec rm -f {} +
 
-      - name: Upload artifact for deployment jobs
+      - name: Upload full app for deployment
         uses: actions/upload-artifact@v4
         with:
           name: node-app
           path: |
             .next/
             public/
+            node_modules/
             package.json
             package-lock.json
             next.config.ts
@@ -91,4 +92,4 @@ jobs:
           app-name: 'med-assistant-app'
           slot-name: 'Production'
           publish-profile: ${{ secrets.MED_ASSISTANT_PUBLISH_PROFILE }}
-          clean: true  
+          clean: true
