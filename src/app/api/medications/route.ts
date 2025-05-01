@@ -7,14 +7,10 @@ import { Medications } from '@/lib/types';
 let medicationService: MedicationService;
 let openAIService: OpenAIService;
 
-try {
-  medicationService = new MedicationService();
-  openAIService = new OpenAIService();
-} catch (error) {
-  console.error('Error initializing services:', error);
-}
 
 export async function GET(request: Request) {
+  medicationService = new MedicationService();
+  openAIService = new OpenAIService();
   try {
     const { searchParams } = new URL(request.url);
     const patientId = searchParams.get('patientId');
@@ -66,6 +62,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  medicationService = new MedicationService();
+  openAIService = new OpenAIService();
   try {
     const body = await request.json();
     const {
@@ -286,6 +284,8 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  medicationService = new MedicationService();
+  openAIService = new OpenAIService();
   try {
     const body = await request.json();
     const { patientId, medicationId, medication } = body;
@@ -314,6 +314,8 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  medicationService = new MedicationService();
+  openAIService = new OpenAIService();
   try {
     const body = await request.json();
     const { patientId, medicationId } = body;
