@@ -7,7 +7,7 @@ name: Build and deploy Node.js app to Azure Web App - med-assistant-app
 on:
   push:
     branches:
-      - main
+      - ralph-dev
   workflow_dispatch:
 
 jobs:
