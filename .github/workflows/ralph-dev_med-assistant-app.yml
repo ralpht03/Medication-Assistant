@@ -59,14 +59,13 @@ jobs:
         run: |
           find . -type f -name '*:*' -exec rm -f {} +
 
-      - name: Upload full app for deployment
+      - name: Upload artifact for deployment
         uses: actions/upload-artifact@v4
         with:
           name: node-app
           path: |
             .next/
             public/
-            node_modules/
             package.json
             package-lock.json
             next.config.ts
