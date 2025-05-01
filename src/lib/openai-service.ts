@@ -6,15 +6,12 @@ interface ChatMessage {
 }
 
 export class OpenAIService {
-  private endpoint!: string;
-  private apiKey!: string;
-  private deployment!: string;
-  private apiVersion!: string;
-  private initialized = false;
+  private endpoint: string;
+  private apiKey: string;
+  private deployment: string;
+  private apiVersion: string;
 
-  private initializeIfNeeded() {
-    if (this.initialized) return;
-
+  constructor() {
     const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
     const key = process.env.AZURE_OPENAI_KEY;
     const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
@@ -28,8 +25,7 @@ export class OpenAIService {
     this.apiKey = key;
     this.deployment = deployment;
     this.apiVersion = apiVersion;
-    this.initialized = true;
-
+    
     console.log('OpenAI Service initialized with:', {
       endpoint: this.endpoint,
       deployment: this.deployment,
@@ -39,8 +35,6 @@ export class OpenAIService {
   }
 
   private async getCompletion(prompt: string): Promise<string> {
-    this.initializeIfNeeded();
-
     const messages: ChatMessage[] = [
       {
         role: "system",
@@ -55,22 +49,26 @@ export class OpenAIService {
     try {
       const url = `${this.endpoint}openai/deployments/${this.deployment}/chat/completions?api-version=${this.apiVersion}`;
       console.log('Making OpenAI API request to:', url);
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'api-key': this.apiKey
-        },
-        body: JSON.stringify({
-          messages,
-          temperature: 0.7,
-          max_tokens: 800,
-          n: 1
-        })
-      });
+      
+      const response = await fetch(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': this.apiKey
+          },
+          body: JSON.stringify({
+            messages: messages,
+            temperature: 0.7,
+            max_tokens: 800,
+            n: 1
+          })
+        }
+      );
 
       if (!response.ok) {
+        // Try to get more detailed error information
         let errorDetail = '';
         try {
           const errorData = await response.json();
@@ -78,7 +76,7 @@ export class OpenAIService {
         } catch (e) {
           errorDetail = await response.text();
         }
-
+        
         console.error('OpenAI API error details:', errorDetail);
         throw new Error(`OpenAI API error: ${response.status} - ${response.statusText}. Details: ${errorDetail}`);
       }
@@ -88,12 +86,18 @@ export class OpenAIService {
         choices: data.choices?.length || 0,
         hasContent: !!data.choices?.[0]?.message?.content
       });
-
+      
       return data.choices[0]?.message?.content || "";
     } catch (error: any) {
       console.error("Error in getCompletion:", error);
-      if (error.cause) console.error("Error cause:", error.cause);
-      if (error.stack) console.error("Error stack:", error.stack);
+      // Log additional details about the error
+      if (error.cause) {
+        console.error("Error cause:", error.cause);
+      }
+      if (error.stack) {
+        console.error("Error stack:", error.stack);
+      }
+      
       throw new Error(`Failed to get completion: ${error.message}`);
     }
   }
