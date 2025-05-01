@@ -3,32 +3,34 @@ import { odata } from '@azure/data-tables';
 import { ensureTableExists } from '../azure-table-utils';
 
 export interface Invitation {
-  PartitionKey: string;  // "INVITATION"
-  RowKey: string;        // Unique invitation ID (UUID)
-  inviterUserId: string; // ID of the user sending the invitation
-  inviterRole: string;   // Role of the inviter (admin or patient)
-  inviterEmail: string;  // Email of the inviter
-  inviterName: string;   // Name of the inviter
-  inviteeEmail: string;  // Email of the person being invited
-  inviteeName: string;   // Name of the person being invited
-  inviteeUserId?: string; // ID of the user being invited (if they exist)
-  inviteeRole: string;   // Role being assigned (patient or helper)
-  token: string;         // Unique secure token for the invitation link
-  status: string;        // "pending", "accepted", "expired", "declined"
-  message: string;       // Custom message from the inviter
-  createdAt: string;     // When the invitation was created
-  expiresAt: string;     // When the invitation expires (1 day after creation)
+  PartitionKey: string;
+  RowKey: string;
+  inviterUserId: string;
+  inviterRole: string;
+  inviterEmail: string;
+  inviterName: string;
+  inviteeEmail: string;
+  inviteeName: string;
+  inviteeUserId?: string;
+  inviteeRole: string;
+  token: string;
+  status: string;
+  message: string;
+  createdAt: string;
+  expiresAt: string;
 }
 
 export class InvitationService {
-  private tableService: AzureTableService;
+  private _tableService: AzureTableService | null = null;
 
-  constructor() {
-    this.tableService = new AzureTableService('Invitations');
-    // Ensure the Invitations table exists
-    ensureTableExists('Invitations').catch(error => {
-      console.error('Failed to ensure Invitations table exists:', error);
-    });
+  private get tableService() {
+    if (!this._tableService) {
+      this._tableService = new AzureTableService('Invitations');
+      ensureTableExists('Invitations').catch(error => {
+        console.error('Failed to ensure Invitations table exists:', error);
+      });
+    }
+    return this._tableService;
   }
 
   async createInvitation(invitation: Omit<Invitation, 'PartitionKey' | 'RowKey'>) {
@@ -41,25 +43,19 @@ export class InvitationService {
   }
 
   async getInvitationsByInvitee(email: string) {
-    return await this.tableService.queryEntities(
-      odata`inviteeEmail eq '${email}'`
-    );
+    return await this.tableService.queryEntities(odata`inviteeEmail eq '${email}'`);
   }
 
   async getInvitationsByInviter(userId: string) {
-    return await this.tableService.queryEntities(
-      odata`inviterUserId eq '${userId}'`
-    );
+    return await this.tableService.queryEntities(odata`inviterUserId eq '${userId}'`);
   }
 
   async getInvitationByToken(token: string) {
-    const results = await this.tableService.queryEntities(
-      odata`token eq '${token}'`
-    );
+    const results = await this.tableService.queryEntities(odata`token eq '${token}'`);
     return results.length > 0 ? results[0] : null;
   }
 
-  async updateInvitationStatus(invitationId: string, status: 'accepted' | 'declined') { 
+  async updateInvitationStatus(invitationId: string, status: 'accepted' | 'declined') {
     return await this.tableService.updateEntity({
       partitionKey: 'INVITATION',
       rowKey: invitationId,
@@ -76,9 +72,7 @@ export class InvitationService {
   }
 
   async getInvitationByRowKey(rowKey: string) {
-    const results = await this.tableService.queryEntities(
-      odata`RowKey eq '${rowKey}'`
-    );
+    const results = await this.tableService.queryEntities(odata`RowKey eq '${rowKey}'`);
     return results.length > 0 ? results[0] : null;
   }
 
