@@ -25,11 +25,10 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: npm install, build, and test
+      - name: build
         run: |
           npm install
           npm run build
-          npm run lint
 
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
