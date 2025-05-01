@@ -21,6 +21,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # ⬇️ Inject secrets into .env.local (you can rename to .env.production if needed)
       - name: Create .env.local file
         run: |
           echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env.local
@@ -53,6 +54,11 @@ jobs:
           AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
           AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
           AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+
+      # ✅ Clean up any invalid colon-based metadata files (e.g. Zone.Identifier)
+      - name: Remove invalid Windows metadata files
+        run: |
+          find . -type f -name '*:*' -exec rm -f {} +
 
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
