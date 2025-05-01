@@ -11,7 +11,6 @@ const MEDICATIONS_TABLE = 'Medications';
 const VERIFICATION_LOGS_TABLE = 'VerificationLogs';
 const USERS_TABLE = 'Users';
 
-const alertsTable = new AzureTableService(ALERTS_TABLE);
 
 /**
  * GET /api/alerts
@@ -26,6 +25,7 @@ const alertsTable = new AzureTableService(ALERTS_TABLE);
  * - action: (optional) 'check-missed-doses' to check for missed doses
  */
 export async function GET(request: NextRequest) {
+  const alertsTable = new AzureTableService(ALERTS_TABLE);
   try {
     const session = await getSession(request);
     if (!session) {
@@ -135,6 +135,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const alertsTable = new AzureTableService(ALERTS_TABLE);
   try {
     const session = await getSession(request);
     if (!session || !session.user || !session.user.id) {
@@ -200,6 +201,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const alertsTable = new AzureTableService(ALERTS_TABLE);
   try {
     const session = await getSession(request);
     if (!session) {
@@ -235,6 +237,7 @@ export async function DELETE(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const alertsTable = new AzureTableService(ALERTS_TABLE);
   try {
     const session = await getSession(request);
     if (!session) {

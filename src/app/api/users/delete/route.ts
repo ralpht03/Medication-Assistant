@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { UserService } from '@/lib/azure-tables';
 
-const userService = new UserService();
 
 export async function POST(request: Request) {
+  const userService = new UserService();
   try {
     const body = await request.json();
     const { userId } = body;

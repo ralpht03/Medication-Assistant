@@ -8,10 +8,6 @@ const VERIFICATION_LOGS_TABLE = 'VerificationLogs';
 const ALERTS_TABLE = 'Alerts';
 const USERS_TABLE = 'Users';
 
-// Table services
-const verificationLogsService = new AzureTableService(VERIFICATION_LOGS_TABLE);
-const alertsService = new AzureTableService(ALERTS_TABLE);
-
 // Interface for the response format
 interface AdherenceResponse {
   adherencePercentage: string;
@@ -31,6 +27,9 @@ interface AdherenceResponse {
 }
 
 export async function GET(req: Request) {
+  // Table services
+  const verificationLogsService = new AzureTableService(VERIFICATION_LOGS_TABLE);
+  const alertsService = new AzureTableService(ALERTS_TABLE);
   try {
     const { searchParams } = new URL(req.url);
     const patientId = searchParams.get('patientId');
@@ -123,6 +122,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  // Table services
+  const verificationLogsService = new AzureTableService(VERIFICATION_LOGS_TABLE);
+  const alertsService = new AzureTableService(ALERTS_TABLE);
   try {
     const data = await req.json();
     console.log('Received POST request data:', data);

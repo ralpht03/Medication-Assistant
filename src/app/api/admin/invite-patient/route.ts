@@ -6,10 +6,10 @@ import { sendInvitationEmail } from '@/lib/email-service';
 import { createAdminInvitationNotification } from '@/lib/patient';
 import crypto from 'crypto';
 
-const invitationService = new InvitationService();
-const usersService = new AzureTableService('Users');
-
 export async function POST(request: NextRequest) {
+  // Table services
+  const invitationService = new InvitationService();
+  const usersService = new AzureTableService('Users');
   try {
     // Get authenticated user using the centralized getSession
     const session = await getSession(request);

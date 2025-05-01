@@ -2,10 +2,6 @@ import { NextResponse } from "next/server";
 import { TableClient } from "@azure/data-tables";
 import { Settings } from "@/lib/types";
 
-const tableClient = TableClient.fromConnectionString(
-  process.env.AZURE_STORAGE_CONNECTION_STRING!,
-  "Settings"
-);
 
 interface UserPreferences {
   notifications: {
@@ -23,6 +19,10 @@ interface SettingsRequest {
 }
 
 export async function POST(request: Request) {
+  const tableClient = TableClient.fromConnectionString(
+    process.env.AZURE_STORAGE_CONNECTION_STRING!,
+    "Settings"
+  );
   try {
     const { userId, preferences }: SettingsRequest = await request.json();
 
@@ -61,6 +61,10 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
+  const tableClient = TableClient.fromConnectionString(
+    process.env.AZURE_STORAGE_CONNECTION_STRING!,
+    "Settings"
+  );
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");

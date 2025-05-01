@@ -15,19 +15,13 @@ interface TableEntity {
 // Initialize services with error handling
 let userService: UserService;
 let invitationService: InvitationService;
-const usersTableClient = createTableClient('Users');
-const medicationsTableClient = createTableClient('Medications');
-const patientsTableClient = createTableClient('Patients');
-
-try {
-  userService = new UserService();
-  invitationService = new InvitationService();
-} catch (error) {
-  console.error('Error initializing services:', error);
-  throw new Error('Failed to initialize services');
-}
 
 export async function POST(request: Request) {
+  const usersTableClient = createTableClient('Users');
+  const medicationsTableClient = createTableClient('Medications');
+  userService = new UserService();
+  invitationService = new InvitationService();
+  
   try {
     const body = await request.json();
     const { adminId, patientId } = body;
