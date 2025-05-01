@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createTableClient } from '@/lib/azure-tables'
+import { createTableClient } from '@/lib/azure-table-utils'
 import { Notification } from '@/lib/types'
 import { getSession } from '@/lib/auth'
 

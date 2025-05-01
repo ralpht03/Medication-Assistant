@@ -4,6 +4,7 @@ import { AzureTableService } from '@/lib/azure/table-service';
 import { getSession } from '@/lib/auth';
 import { TableClient, odata } from '@azure/data-tables';
 import { createHelperAcceptanceNotification } from '@/lib/patient';
+import { createTableClient } from '@/lib/azure-table-utils';
 
 
 
@@ -11,24 +12,6 @@ export async function POST(request: NextRequest) {
 
   const invitationService = new InvitationService();
   const usersService = new AzureTableService('Users');
-
-  // Initialize TableClient for Users table
-  function createTableClient(tableName: string): TableClient {
-    const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
-    if (!connectionString) {
-      throw new Error('Azure Storage connection string must be provided in the environment variables.');
-    }
-
-    try {
-      return TableClient.fromConnectionString(
-        connectionString as string,
-        tableName
-      );
-    } catch (error) {
-      console.error(`Error initializing TableClient for ${tableName}:`, error);
-      throw new Error(`Failed to initialize Azure Table Storage client for ${tableName}`);
-    }
-  }
 
   const usersTableClient = createTableClient('Users');
   try {

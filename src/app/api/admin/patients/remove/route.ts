@@ -3,7 +3,7 @@ import { UserService } from '@/lib/azure-tables';
 import { InvitationService, Invitation } from '@/lib/azure/invitation-service';
 import { odata } from "@azure/data-tables";
 import { AzureTableUser } from '@/lib/azure-tables-types';
-import { createTableClient } from '@/lib/azure-tables';
+import { createTableClient } from '@/lib/azure-table-utils';
 import { createNotification } from '@/lib/patient';
 
 interface TableEntity {

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { UserService, MedicationService } from '@/lib/azure-tables';
 import { TableClient, odata } from '@azure/data-tables';
-import { createTableClient } from '@/lib/azure-tables';
+import { createTableClient } from '@/lib/azure-table-utils';
 
 // Initialize services
 let userService: UserService;

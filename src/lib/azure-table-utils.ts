@@ -1,25 +1,33 @@
 import { TableClient, TableEntity } from "@azure/data-tables";
 
+
 /**
  * Creates a TableClient for interacting with Azure Table Storage
+ * Lazily loads the actual client to avoid process.env access during build.
  * @param tableName The name of the Azure Storage Table
- * @returns TableClient instance
+ * @returns A proxy TableClient that initializes only when first used
  */
 export const createTableClient = (tableName: string): TableClient => {
-  const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
-  if (!connectionString) {
-    throw new Error('Azure Storage connection string must be provided in the environment variables.');
-  }
+  let client: TableClient | null = null;
 
-  try {
-    return TableClient.fromConnectionString(
-      connectionString,
-      tableName
-    );
-  } catch (error) {
-    console.error(`Error initializing TableClient for ${tableName}:`, error);
-    throw new Error(`Failed to initialize Azure Table Storage client for ${tableName}`);
-  }
+  return new Proxy({} as TableClient, {
+    get(_, prop: keyof TableClient) {
+      if (!client) {
+        const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
+        if (!connectionString) {
+          throw new Error('Azure Storage connection string must be provided in the environment variables.');
+        }
+        try {
+          client = TableClient.fromConnectionString(connectionString, tableName);
+        } catch (error) {
+          console.error(`Error initializing TableClient for ${tableName}:`, error);
+          throw new Error(`Failed to initialize Azure Table Storage client for ${tableName}`);
+        }
+      }
+      // @ts-ignore: we're dynamically delegating to the real client
+      return client[prop];
+    }
+  });
 };
 
 /**

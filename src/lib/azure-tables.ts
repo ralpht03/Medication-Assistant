@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
 import { Medications } from "./types";
 import { InvitationService } from './azure/invitation-service';
+import { createTableClient } from './azure-table-utils';
 
 config();
 
@@ -152,24 +153,6 @@ export class MedicationService {
       console.error('Error deleting all medications:', error);
       throw error;
     }
-  }
-}
-
-// Helper function to create a TableClient
-export function createTableClient(tableName: string): TableClient {
-  const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
-  if (!connectionString) {
-    throw new Error('Azure Storage connection string must be provided in the environment variables.');
-  }
-
-  try {
-    return TableClient.fromConnectionString(
-      connectionString as string,
-      tableName
-    );
-  } catch (error) {
-    console.error(`Error initializing TableClient for ${tableName}:`, error);
-    throw new Error(`Failed to initialize Azure Table Storage client for ${tableName}`);
   }
 }
 

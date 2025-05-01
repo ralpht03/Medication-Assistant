@@ -1,11 +1,8 @@
 import { UserService, MedicationService } from './azure-tables'
 import { AzureTableUser, Medication as AzureMedication } from './azure-tables-types'
 import { TableClient, odata } from '@azure/data-tables'
-import { createTableClient } from './azure-tables'
+import { createTableClient } from './azure-table-utils'
 
-const userService = new UserService()
-const medicationService = new MedicationService()
-const usersTableClient = createTableClient('Users')
 
 interface User {
   id: string
@@ -42,6 +39,9 @@ interface MedicationLog {
 }
 
 export async function getUserById(id: string): Promise<User | null> {
+  const userService = new UserService()
+  const medicationService = new MedicationService()
+  const usersTableClient = createTableClient('Users')
   try {
     console.log('Looking up user with ID:', id)
     // Search across all possible roles
@@ -73,6 +73,9 @@ export async function getUserById(id: string): Promise<User | null> {
 }
 
 export async function getPatientMedications(patientId: string): Promise<Medication[]> {
+  const userService = new UserService()
+  const medicationService = new MedicationService()
+  const usersTableClient = createTableClient('Users')
   try {
     const medications = await medicationService.getMedications(patientId)
     return medications.map(med => ({
@@ -93,6 +96,9 @@ export async function getPatientMedications(patientId: string): Promise<Medicati
 }
 
 export async function updateMedicationLog(medicationId: string, log: MedicationLog): Promise<boolean> {
+  const userService = new UserService()
+  const medicationService = new MedicationService()
+  const usersTableClient = createTableClient('Users')
   try {
     const medication = await medicationService.getMedicationById(medicationId, medicationId)
     if (!medication) {
