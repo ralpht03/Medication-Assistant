@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { PredictionAPIClient } from "@azure/cognitiveservices-customvision-prediction";
 import { ApiKeyCredentials } from "@azure/ms-rest-js";
-import { VerificationLogs } from '@/lib/types';
+import { VerificationLogs, Alerts } from '@/lib/types';
 import { AzureTableService } from '@/lib/azure/table-service';
 
 // Validate and log environment variables in development
@@ -45,28 +45,48 @@ interface Prediction {
   tagName: string;
 }
 
+interface PredictionResponse {
+  predictions: Array<{
+    probability: number;
+    tagName: string;
+    tagId: string;
+  }>;
+}
+
+interface VerificationResult {
+  verified: boolean;
+  pill_name: string;
+  confidence: number;
+  message: string;
+  medication?: {
+    name: string;
+    dosage: string;
+  };
+}
+
 // The endpoint from your Azure Custom Vision
 const PREDICTION_ENDPOINT = process.env.CUSTOM_VISION_ENDPOINT;
 const PREDICTION_KEY = process.env.CUSTOM_VISION_KEY;
 
 export async function POST(request: Request) {
   try {
-    console.log('Verify medication API called');
     const requestData = await request.json();
     const { image, medicationId, patientId } = requestData;
-    
-    console.log('Verify medication request:', {
+
+    console.log('Starting medication verification:', {
       medicationId,
       patientId,
-      imageSize: image ? image.length : 0
+      imageSize: image.length
     });
-    
+
+    if (!image || !patientId) {
+      throw new Error('Missing required fields: image or patientId');
+    }
+
     // Convert base64 to buffer
     const imageBuffer = Buffer.from(image.split(',')[1], 'base64');
-    console.log('Image buffer size:', imageBuffer.length);
 
-    // Make the prediction request using fetch
-    console.log('Making prediction request to:', process.env.CUSTOM_VISION_ENDPOINT);
+    // Make the prediction request
     const response = await fetch(process.env.CUSTOM_VISION_ENDPOINT!, {
       method: 'POST',
       headers: {
@@ -86,79 +106,140 @@ export async function POST(request: Request) {
       throw new Error(`Prediction API error: ${response.status} ${response.statusText}`);
     }
 
-    const results = await response.json();
-    console.log('Prediction API response:', results);
+    const results = await response.json() as PredictionResponse;
+    console.log('Raw prediction results:', {
+      predictionsCount: results?.predictions?.length || 0,
+      allPredictions: results?.predictions?.map(p => ({
+        tagName: p.tagName,
+        probability: (p.probability * 100).toFixed(2) + '%'
+      }))
+    });
 
-    // Process predictions
-    const predictions = results.predictions || [];
-    const topPrediction = predictions[0];
+    // Process predictions with null check
+    const predictions = results?.predictions || [];
+    
+    // Get the highest probability prediction
+    const topPrediction = predictions.length > 0 
+      ? predictions.reduce((prev, current) => 
+          (current.probability > prev.probability) ? current : prev
+        )
+      : null;
 
-    // If no predictions were found
     if (!topPrediction) {
-      console.log('No predictions found');
+      console.log('No valid predictions found in response');
       return NextResponse.json({
         verified: false,
         pill_name: 'unknown',
         confidence: 0,
         message: 'No pill detected in image. Please ensure the pill is centered and well-lit.'
-      }, { status: 200 }); // Return 200 as this is a valid response
+      }, { status: 200 });
     }
 
-    const result = {
-      verified: topPrediction.probability > 0.75,
-      pill_name: topPrediction.tagName,
-      confidence: topPrediction.probability,
-      message: topPrediction.probability > 0.75
-        ? `Successfully identified as ${topPrediction.tagName}`
-        : 'Low confidence detection. Please try again with better lighting'
-    };
-    
-    console.log('Verification result:', result);
+    // Simple identification (Pill Identification page)
+    if (!medicationId || medicationId === 'identification-only') {
+      const simpleResult = {
+        verified: true,
+        pill_name: topPrediction.tagName,
+        confidence: topPrediction.probability,
+        message: `Successfully identified as ${topPrediction.tagName}`
+      };
+      console.log('Simple identification result:', simpleResult);
+      return NextResponse.json(simpleResult);
+    }
 
-    // Log verification attempt
-    const timestamp = new Date().toISOString();
-    const verificationLog: VerificationLogs = {
-      PartitionKey: patientId,
-      RowKey: timestamp,
-      Timestamp: timestamp,
-      patientId,
-      method: 'image',
-      verified: result.verified,
-      verificationData: JSON.stringify(result),
-      imageUrl: '', // Store image URL if needed
-      pillImageUrl: '', // Store pill image URL if needed
-      helperId: '',
-      patientConfirmation: false,
-      helperConfirmation: false
-    };
+    // Full verification (from Take Now flow)
+    try {
+      const medicationsService = new AzureTableService('Medications');
+      const medicationEntity = await medicationsService.getEntity(patientId, medicationId);
+      if (!medicationEntity) {
+        console.log('Medication not found:', { patientId, medicationId });
+        return NextResponse.json({
+          verified: false,
+          pill_name: 'unknown',
+          confidence: 0,
+          message: 'Medication not found in database'
+        }, { status: 200 });
+      }
 
-    console.log('Saving verification log:', {
-      patientId,
-      medicationId,
-      verified: result.verified,
-      timestamp
-    });
+      const medication = {
+        name: medicationEntity.name as string,
+        dosage: medicationEntity.dosage as string
+      };
 
-    // Store verification log in Azure
-    const tableService = new AzureTableService('VerificationLogs');
-    await tableService.createEntity(verificationLog);
-    console.log('Verification log saved successfully');
+      const result = {
+        verified: topPrediction.probability > 0.75,
+        pill_name: topPrediction.tagName,
+        confidence: topPrediction.probability,
+        message: topPrediction.probability > 0.75
+          ? `Successfully identified as ${topPrediction.tagName}`
+          : 'Low confidence detection. Please try again with better lighting',
+        medication: medication
+      };
 
-    return NextResponse.json(result);
+      // Only create alert if the detected pill doesn't match the expected medication
+      if (result.pill_name !== medication.name) {
+        const alertsService = new AzureTableService('Alerts');
+        const timestamp = new Date().toISOString();
+        
+        const alert: Alerts = {
+          PartitionKey: patientId,
+          RowKey: `pill_identification_failed-${timestamp}`,
+          Timestamp: timestamp,
+          type: 'pill_identification_failed',
+          message: `Wrong pill detected. Expected: ${medication.name}, Detected: ${result.pill_name}. Please verify you are taking the correct medication.`,
+          priority: 'high',
+          medicationId: medicationId,
+          patientId: patientId,
+          read: false,
+          adminAck: false,
+          patientAck: false,
+          helperAck: false
+        };
+        
+        await alertsService.createEntity(alert);
+      }
+      
+      // Create alert if pill identification was skipped
+      if (requestData.bypassVerification) {
+        const alertsService = new AzureTableService('Alerts');
+        const timestamp = new Date().toISOString();
+        
+        const alert: Alerts = {
+          PartitionKey: patientId,
+          RowKey: `pill_identification_skipped-${timestamp}`,
+          Timestamp: timestamp,
+          type: 'pill_identification_skipped',
+          message: `Pill identification was skipped for ${medication.name}. Please ensure you are taking the correct medication.`,
+          priority: 'high',
+          medicationId: medicationId,
+          patientId: patientId,
+          read: false,
+          adminAck: false,
+          patientAck: false,
+          helperAck: false
+        };
+        
+        await alertsService.createEntity(alert);
+      }
+      
+      console.log('Full verification result:', result);
+      return NextResponse.json(result);
+    } catch (error) {
+      console.error('Error in full verification:', error);
+      return NextResponse.json({
+        verified: false,
+        pill_name: 'unknown',
+        confidence: 0,
+        message: 'Error verifying medication against database'
+      }, { status: 200 });
+    }
   } catch (error) {
-    console.error("Pill verification error:", error);
-    const errorResult = {
-      error: error instanceof Error ? error.message : "Failed to verify medication",
-      message: "Unable to process image. Please try again.",
+    console.error('Verification process error:', error);
+    return NextResponse.json({
       verified: false,
       pill_name: 'unknown',
-      confidence: 0
-    };
-    console.log('Returning error response:', errorResult);
-    
-    return NextResponse.json(
-      errorResult,
-      { status: 200 } // Return 200 even for processing errors
-    );
+      confidence: 0,
+      message: error instanceof Error ? error.message : "Failed to verify medication"
+    } as VerificationResult, { status: 200 });
   }
 }

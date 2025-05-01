@@ -283,7 +283,7 @@ export class PrescriptionOCR {
       // Filter out names that are likely not patient names
       const possibleNames = nameMatches.filter(name => 
         !name.includes("Dr.") && 
-        !name.includes("M.D.") && 
+        !name.includes("M.D.") &&
         !name.includes("Medical") &&
         !name.includes("Center") &&
         !name.includes("Health") &&
@@ -512,7 +512,7 @@ export class PrescriptionOCR {
           else if (trimmedLine.toLowerCase().includes('refill')) {
             const refillMatch = trimmedLine.match(/\d+/);
             if (refillMatch) {
-              currentMed.refills = parseInt(refillMatch[0]);
+              currentMed.refills = parseInt(refillMatch[0]) || 0;
             }
           }
         }
@@ -572,7 +572,7 @@ export class PrescriptionOCR {
     let refills = 0;
     const refillMatch = medChunk.match(/Refills?:\s*(\d+)/i);
     if (refillMatch) {
-      refills = parseInt(refillMatch[1]);
+      refills = parseInt(refillMatch[1]) || 0;
     }
     
     return { instructions, quantity, refills };
@@ -712,7 +712,7 @@ export class PrescriptionOCR {
     for (const pattern of refillPatterns) {
       const match = textChunk.match(pattern);
       if (match && match[1]) {
-        return parseInt(match[1]);
+        return parseInt(match[1]) || 0;
       }
     }
     

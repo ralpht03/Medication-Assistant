@@ -5,8 +5,12 @@ import "./globals.css"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "MediTrack - Your Medication Management App",
+  title: "Medication Assistant",
   description: "Easily manage your medications and track your adherence",
+  icons: {
+    icon: '/medicationlogo.png',
+    apple: '/medicationlogo.png',
+  },
 }
 
 export default function RootLayout({
@@ -16,12 +20,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
-        <script async src="https://docs.opencv.org/master/opencv.js"></script>
-      </head>
-      <body className={inter.className}>
-        <div className="flex h-screen bg-gray-100">{children}</div>
-      </body>
+      <body className={inter.className} suppressHydrationWarning>{children}</body>
     </html>
   )
 }

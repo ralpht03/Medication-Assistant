@@ -1,19 +1,9 @@
-import { Check, Clock, X, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { useState } from "react";
 import { Medications } from '@/lib/types';
 import CameraModal from '@/components/CameraModal';
 
 export type MedicationStatus = 'taken' | 'missed' | 'upcoming';
-
-const statusConfig: Record<MedicationStatus, {
-  icon: any; // Or proper Lucide icon type
-  className: string;
-  text: string;
-}> = {
-  taken: { icon: Check, className: "bg-green-100 text-green-800", text: "Taken" },
-  missed: { icon: X, className: "bg-red-100 text-red-800", text: "Missed" },
-  upcoming: { icon: Clock, className: "bg-yellow-100 text-yellow-800", text: "Upcoming" }
-};
 
 interface MedicationCardProps {
   medication: Medications & {
@@ -27,7 +17,6 @@ interface MedicationCardProps {
 }
 
 const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: MedicationCardProps) => {
-  const StatusIcon = statusConfig[medication.status].icon;
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [alert, setAlert] = useState<string | null>(null);
 
@@ -39,6 +28,11 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
 
   // Function to handle "Take Now" button click
   const handleTakeNow = () => {
+    console.log('Opening camera modal with medication:', {
+      RowKey: medication.RowKey,
+      id: medication.id,
+      name: medication.name
+    });
     setShowCameraModal(true);
   };
   
@@ -48,9 +42,67 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
   };
   
   // Function to handle successful medication taking
-  const handleMedicationTaken = () => {
-    if (onTake) onTake();
-    setShowCameraModal(false);
+  const handleMedicationTaken = async (data: {
+    medicationId: string;
+    patientId: string;
+    pillCount: string;
+    recommendedPillCount: string;
+    status: 'taken' | 'missed' | 'skipped';
+    notes?: string;
+    bypassVerification?: boolean;
+  }) => {
+    try {
+      console.log('handleMedicationTaken received data:', data);
+      
+      // Get user info from localStorage
+      const userStr = localStorage.getItem('user');
+      if (!userStr) throw new Error('User not found');
+      const user = JSON.parse(userStr);
+
+      // Format the current date properly
+      const now = new Date();
+      const timestamp = now.toISOString();
+      const formattedDate = now.toLocaleString();
+
+      // Make API call to record the verification
+      console.log('Sending verification data:', {
+        ...data,
+        medicationId: data.medicationId,
+        patientName: `${user.firstName} ${user.lastName}`,
+        verifiedBy: "self",
+        timestamp: timestamp,
+        formattedDate: formattedDate
+      });
+
+      const response = await fetch('/api/adherence', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...data,
+          medicationId: data.medicationId,
+          patientName: `${user.firstName} ${user.lastName}`,
+          verifiedBy: "self",
+          timestamp: timestamp,
+          formattedDate: formattedDate
+        }),
+      });
+
+      const responseData = await response.json();
+      console.log('API Response:', responseData);
+
+      if (!response.ok) {
+        throw new Error(`Failed to record medication verification: ${responseData.error || 'Unknown error'}`);
+      }
+
+      // Call onTake callback after successful API call
+      if (onTake) onTake();
+      setShowCameraModal(false);
+    } catch (error) {
+      console.error('Error recording medication verification:', error);
+      showAlert('Failed to record medication verification. Please try again.');
+    }
   };
 
   return (
@@ -58,14 +110,11 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <h3 className="text-lg font-medium">{medication.name}</h3>
-          <span className={`px-2 py-1 text-sm rounded ${statusConfig[medication.status].className}`}>
-            <StatusIcon className="w-4 h-4 inline-block mr-1" />
-            {statusConfig[medication.status].text}
-          </span>
         </div>
       </div>
       <p className="text-sm text-gray-600">{medication.dosage}</p>
       <p className="text-sm text-gray-600">Scheduled Time: {medication.time}</p>
+      <p className="text-sm text-gray-600">Recommended Dose: {medication.recommendedPillCount || 1} pill(s)</p>
 
       {showActions && (
         <div className="mt-4 flex space-x-2">
@@ -88,12 +137,18 @@ const MedicationCard = ({ medication, showActions = false, onTake, onSnooze }: M
         isOpen={showCameraModal}
         onClose={handleModalClose}
         medication={{
-          id: medication.id || medication.RowKey, // Use id if available, fallback to RowKey
+          RowKey: (medication.RowKey || medication.id || '') as string,
           name: medication.name,
-          dosage: medication.dosage,
-          patientId: medication.patientId || medication.PartitionKey // Use patientId if available, fallback to PartitionKey
+          recommendedPillCount: medication.recommendedPillCount,
+          patientId: medication.patientId 
         }}
-        onTakeMedication={handleMedicationTaken}
+        onVerificationComplete={(data) => {
+          if (!medication.RowKey && !medication.id) {
+            showAlert('Invalid medication ID. Please try again.');
+            return;
+          }
+          handleMedicationTaken(data);
+        }}
       />
       
       {/* Alert Message */}

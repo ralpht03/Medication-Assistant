@@ -114,9 +114,13 @@ export default function AIAssistantPage() {
         action = 'generalInfo';
         requestBody.question = question;
       } else if (question.toLowerCase().includes('interaction')) {
-        // For interactions, always include all medications for comprehensive analysis
+        // For interactions, always include ALL medications for comprehensive analysis
+        // regardless of whether a specific medication is selected
         action = 'interactions';
         requestBody.medications = medications;
+        
+        // Add a note to the request to emphasize checking all medications
+        requestBody.checkAllMedications = true;
       } else if (question.toLowerCase().includes('schedule')) {
         // For schedule questions, use all medications
         action = 'schedule';
@@ -206,7 +210,8 @@ export default function AIAssistantPage() {
     },
     {
       label: "Drug Interactions",
-      question: "Are there any potential drug interactions I should be aware of?"
+      question: "Are there any potential drug interactions I should be aware of?",
+      note: "Checks all medications"
     }
   ]
 
@@ -272,7 +277,14 @@ export default function AIAssistantPage() {
                   {medications.map((med) => (
                     <button
                       key={med.rowKey}
-                      onClick={() => setSelectedMedication(med)}
+                      onClick={() => {
+                        // Toggle selection - if already selected, unselect it
+                        if (selectedMedication?.rowKey === med.rowKey) {
+                          setSelectedMedication(null);
+                        } else {
+                          setSelectedMedication(med);
+                        }
+                      }}
                       className={`px-3 py-2 rounded-lg shadow-sm transition-colors text-sm ${
                         selectedMedication?.rowKey === med.rowKey
                           ? 'bg-blue-500 text-white'
@@ -284,13 +296,21 @@ export default function AIAssistantPage() {
                   ))}
                 </div>
                 {selectedMedication && (
-                  <div className="mt-3 p-3 bg-blue-50 rounded-lg text-sm">
-                    <p className="font-medium text-blue-900">Selected: {selectedMedication.name}</p>
-                    <p className="text-blue-700">Dosage: {selectedMedication.dosage}</p>
-                    <p className="text-blue-700">Frequency: {selectedMedication.frequency}</p>
-                    {selectedMedication.instructions && (
-                      <p className="text-blue-700">Instructions: {selectedMedication.instructions}</p>
-                    )}
+                  <div className="mt-3">
+                    <div className="p-3 bg-blue-50 rounded-lg text-sm">
+                      <p className="font-medium text-blue-900">Selected: {selectedMedication.name}</p>
+                      <p className="text-blue-700">Dosage: {selectedMedication.dosage}</p>
+                      <p className="text-blue-700">Frequency: {selectedMedication.frequency}</p>
+                      {selectedMedication.instructions && (
+                        <p className="text-blue-700">Instructions: {selectedMedication.instructions}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setSelectedMedication(null)}
+                      className="mt-2 px-3 py-1 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300 transition-colors"
+                    >
+                      Deselect All
+                    </button>
                   </div>
                 )}
               </div>
@@ -305,7 +325,14 @@ export default function AIAssistantPage() {
                       onClick={() => handleQuestionSubmit(action.question)}
                       className="px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors text-sm"
                     >
-                      {action.label}
+                      <div>
+                        {action.label}
+                        {action.note && (
+                          <div className="text-xs text-blue-600 mt-1">
+                            ({action.note})
+                          </div>
+                        )}
+                      </div>
                     </button>
                   ))}
                 </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { Search, AlertCircle, CheckCircle, PlusCircle, Loader2, UserMinus } from "lucide-react"
 import MedicationAssignmentModal from "./MedicationAssignmentModal"
+import { toast } from "react-hot-toast"
 
 // Define types based on your Azure Table Storage schema
 interface Patient {
@@ -11,9 +12,11 @@ interface Patient {
   email: string
   currentMedications: Medication[]
   adherenceRate: number
+  adherencePercentage?: number
   alerts?: Alert[]
   profile?: any
   medicalHistory?: any
+  medicationCount?: number
 }
 
 interface Medication {
@@ -126,13 +129,14 @@ const PatientListTable = ({ searchTerm: externalSearchTerm }: PatientListTablePr
     }
     
     // Check adherence rate for status
-    if (patient.adherenceRate >= 80) {
+    const adherenceRate = patient.adherenceRate || patient.adherencePercentage || 0;
+    if (adherenceRate >= 80) {
       return {
         status: "good",
         label: "Good",
         class: "bg-green-100 text-green-800"
       }
-    } else if (patient.adherenceRate >= 60) {
+    } else if (adherenceRate >= 60) {
       return {
         status: "moderate",
         label: "Moderate",
@@ -217,9 +221,10 @@ const PatientListTable = ({ searchTerm: externalSearchTerm }: PatientListTablePr
       // Refresh the patient list
       setRefreshTrigger(prev => prev + 1)
       setShowRemoveConfirm(null)
+      toast.success('Patient removed successfully')
     } catch (err) {
       console.error('Error removing patient:', err)
-      alert('Failed to remove patient: ' + (err instanceof Error ? err.message : 'Unknown error'))
+      toast.error(err instanceof Error ? err.message : 'Failed to remove patient')
     }
   }
 
@@ -251,8 +256,8 @@ const PatientListTable = ({ searchTerm: externalSearchTerm }: PatientListTablePr
           aValue = `${a.firstName} ${a.lastName}`
           bValue = `${b.firstName} ${b.lastName}`
         } else if (sortField === "medicationCount") {
-          aValue = a.currentMedications?.length || 0
-          bValue = b.currentMedications?.length || 0
+          aValue = a.medicationCount || 0
+          bValue = b.medicationCount || 0
         } else if (sortField === "alertCount") {
           aValue = a.alerts?.length || 0 
           bValue = b.alerts?.length || 0
@@ -383,17 +388,17 @@ const PatientListTable = ({ searchTerm: externalSearchTerm }: PatientListTablePr
                       <div className="text-xs text-gray-500">{patient.email}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-500">{patient.currentMedications?.length || 0}</div>
+                      <div className="text-sm text-gray-500">{patient.medicationCount || 0}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="w-16 bg-gray-200 rounded-full h-2.5">
                           <div
                             className="bg-blue-600 h-2.5 rounded-full"
-                            style={{ width: `${patient.adherenceRate}%` }}
+                            style={{ width: `${patient.adherenceRate || patient.adherencePercentage || 0}%` }}
                           ></div>
                         </div>
-                        <span className="ml-2 text-sm text-gray-500">{patient.adherenceRate}%</span>
+                        <span className="ml-2 text-sm text-gray-500">{patient.adherenceRate || patient.adherencePercentage || 0}%</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

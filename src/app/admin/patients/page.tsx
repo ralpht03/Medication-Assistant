@@ -3,14 +3,26 @@
 import { useEffect, useState } from 'react';
 import PageLayout from '@/components/PageLayout';
 import { toast } from 'react-hot-toast';
-import { Search } from 'lucide-react';
+import { Search, Trash2 } from 'lucide-react';
 
 interface Patient {
   id: string;
   name: string;
   email: string;
-  lastMedication: string;
-  nextScheduled: string;
+  lastMedication: {
+    time: string;
+    medication?: {
+      name: string;
+      dosage: string;
+    };
+  };
+  nextScheduled: {
+    time: string;
+    medication?: {
+      name: string;
+      dosage: string;
+    };
+  };
   adherenceRate: number;
   status: 'normal' | 'missed' | 'overdose';
   medicationCount: number;
@@ -20,6 +32,7 @@ export default function AdminPatientsPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isUnassigning, setIsUnassigning] = useState(false);
 
   useEffect(() => {
     fetchPatients();
@@ -35,21 +48,69 @@ export default function AdminPatientsPage() {
       }
 
       const user = JSON.parse(userStr);
-      const adminId = user.id || user.rowKey;
+      if (!user || typeof user !== 'object') {
+        throw new Error('Invalid user data in localStorage');
+      }
 
-      const response = await fetch(`/api/admin/patients?adminId=${adminId}`);
+      // Ensure we have a valid ID
+      const adminId = user.rowKey || user.id;
+      if (!adminId || typeof adminId !== 'string') {
+        throw new Error('Invalid admin ID');
+      }
+
+      const response = await fetch(`/api/admin/patients?adminId=${encodeURIComponent(adminId)}`);
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to fetch patients');
       }
 
+      console.log('Received patients data:', data.patients);
       setPatients(data.patients || []);
     } catch (error) {
       console.error('Error fetching patients:', error);
       toast.error('Failed to load patients');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUnassignPatient = async (patientId: string) => {
+    if (!confirm('Are you sure you want to unassign this patient?')) return;
+    
+    try {
+      setIsUnassigning(true);
+      const userStr = localStorage.getItem('user');
+      if (!userStr) {
+        throw new Error('User not found in localStorage');
+      }
+
+      const user = JSON.parse(userStr);
+      const adminId = user.rowKey || user.id;
+      console.log('Admin ID:', adminId);
+      const response = await fetch('/api/admin/patients/remove', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          adminId,
+          patientId
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to remove patient');
+      }
+
+      toast.success('Patient removed successfully');
+      fetchPatients(); // Refresh the list
+    } catch (error) {
+      console.error('Error removing patient:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to remove patient');
+    } finally {
+      setIsUnassigning(false);
     }
   };
 
@@ -126,6 +187,9 @@ export default function AdminPatientsPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -139,10 +203,20 @@ export default function AdminPatientsPage() {
                       {patient.medicationCount}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {patient.lastMedication}
+                      {patient.lastMedication.time}
+                      {patient.lastMedication.medication && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          {patient.lastMedication.medication.name} ({patient.lastMedication.medication.dosage})
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {patient.nextScheduled}
+                      {patient.nextScheduled.time}
+                      {patient.nextScheduled.medication && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          {patient.nextScheduled.medication.name} ({patient.nextScheduled.medication.dosage})
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -161,6 +235,15 @@ export default function AdminPatientsPage() {
                       <span className={getStatusBadge(patient.status)}>
                         {patient.status.charAt(0).toUpperCase() + patient.status.slice(1)}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <button
+                        onClick={() => handleUnassignPatient(patient.id)}
+                        disabled={isUnassigning}
+                        className="p-1 text-red-600 hover:text-red-800 disabled:opacity-50"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
                     </td>
                   </tr>
                 ))}

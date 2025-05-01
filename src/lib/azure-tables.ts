@@ -4,13 +4,14 @@ import { Medication, AzureTableUser, AzureTablePatient, SignupData, LoginData, A
 import bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
+import { Medications } from "./types";
+import { InvitationService } from './azure/invitation-service';
 
 config();
 
 const DEFAULT_MEDICATIONS_TABLE = 'medications';
 const USERS_TABLE = 'Users';
 const PATIENTS_TABLE = 'Patients';
-const ADMIN_PATIENT_RELATIONS_TABLE = 'AdminPatientRelations';
 
 // MedicationService class for handling medication operations
 export class MedicationService {
@@ -59,8 +60,8 @@ export class MedicationService {
       const medicationId = uuidv4();
       
       const medicationEntity: Medication = {
-        partitionKey: patientId,
-        rowKey: medicationId,
+        PartitionKey: patientId,
+        RowKey: medicationId,
         name: medication.name,
         dosage: medication.dosage,
         frequency: medication.frequency,
@@ -69,16 +70,22 @@ export class MedicationService {
         startDate: medication.startDate || now,
         endDate: medication.endDate || '',
         verificationMethod: medication.verificationMethod || 'manual-entry',
+        patientId: patientId,
         prescribingDoctor: medication.prescribingDoctor || '',
         pharmacy: medication.pharmacy || '',
         notes: medication.notes || '',
         refillsRemaining: medication.refillsRemaining || 0,
+        recommendedPillCount: medication.recommendedPillCount || 1,
         lastFilled: medication.lastFilled || '',
         createdAt: now,
         updatedAt: now
       };
       
-      await this.medicationsTableClient.createEntity(medicationEntity);
+      await this.medicationsTableClient.createEntity({
+        partitionKey: patientId,
+        rowKey: medicationId,
+        ...medicationEntity
+      });
       return medicationEntity;
     } catch (error) {
       console.error('Error adding medication:', error);
@@ -98,8 +105,8 @@ export class MedicationService {
       // Prepare the update entity
       const now = new Date().toISOString();
       const updateEntity = {
-        partitionKey: patientId,
-        rowKey: medicationId,
+        PartitionKey: patientId,
+        RowKey: medicationId,
         updatedAt: now,
         ...updates
       };
@@ -139,7 +146,7 @@ export class MedicationService {
       const medications = await this.getMedications(patientId);
       
       for (const medication of medications) {
-        await this.medicationsTableClient.deleteEntity(patientId, medication.rowKey);
+        await this.medicationsTableClient.deleteEntity(patientId, medication.RowKey);
       }
     } catch (error) {
       console.error('Error deleting all medications:', error);
@@ -149,7 +156,7 @@ export class MedicationService {
 }
 
 // Helper function to create a TableClient
-function createTableClient(tableName: string): TableClient {
+export function createTableClient(tableName: string): TableClient {
   const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
   if (!connectionString) {
     throw new Error('Azure Storage connection string must be provided in the environment variables.');
@@ -169,14 +176,18 @@ function createTableClient(tableName: string): TableClient {
 export class UserService {
   private usersTableClient: TableClient;
   private patientsTableClient: TableClient;
-  private adminPatientRelationsTableClient: TableClient;
   private saltRounds = 10;
   private jwtSecret: string;
+  private medicationsTableClient: TableClient;
+  private verificationLogsTableClient: TableClient;
+  private notificationsTableClient: TableClient;
 
   constructor() {
     this.usersTableClient = createTableClient(USERS_TABLE);
     this.patientsTableClient = createTableClient(PATIENTS_TABLE);
-    this.adminPatientRelationsTableClient = createTableClient(ADMIN_PATIENT_RELATIONS_TABLE);
+    this.medicationsTableClient = createTableClient('Medications');
+    this.verificationLogsTableClient = createTableClient('VerificationLogs');
+    this.notificationsTableClient = createTableClient('Notifications');
     
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
@@ -192,9 +203,6 @@ export class UserService {
       
       await this.patientsTableClient.createTable();
       console.log('Patients table created successfully');
-      
-      await this.adminPatientRelationsTableClient.createTable();
-      console.log('AdminPatientRelations table created successfully');
     } catch (error: any) {
       if (error.statusCode === 409) {
         console.log('Tables already exist');
@@ -214,14 +222,20 @@ export class UserService {
 
   async signup(userData: SignupData): Promise<AuthResult> {
     try {
-      // Check if user exists
-      const filter = odata`PartitionKey eq 'USER' and email eq ${userData.email}`;
-      const existingUsers = this.usersTableClient.listEntities<AzureTableUser>({ queryOptions: { filter } });
-      
+      // Check if user exists by searching across all roles
+      const roles = ['admin', 'patient', 'helper'];
       let userExists = false;
-      for await (const user of existingUsers) {
-        userExists = true;
-        break;
+      
+      for (const role of roles) {
+        const filter = odata`PartitionKey eq ${role} and email eq ${userData.email}`;
+        const existingUsers = this.usersTableClient.listEntities<AzureTableUser>({ queryOptions: { filter } });
+        
+        for await (const user of existingUsers) {
+          userExists = true;
+          break;
+        }
+        
+        if (userExists) break;
       }
       
       if (userExists) {
@@ -235,10 +249,10 @@ export class UserService {
       const userId = uuidv4();
       const now = new Date().toISOString();
       
-      // Create user entity
+      // Create user entity with role-based partition key
       const userEntity: AzureTableUser = {
-        partitionKey: 'USER',
-        rowKey: userId,
+        PartitionKey: userData.role,
+        RowKey: userId,
         email: userData.email,
         passwordHash: hashedPassword,
         firstName: userData.firstName,
@@ -260,13 +274,12 @@ export class UserService {
       // If user is a patient, create patient profile
       if (userData.role === 'patient') {
         const patientEntity: AzureTablePatient = {
-          partitionKey: 'PATIENT',
-          rowKey: userId,
+          PartitionKey: 'patient',
+          RowKey: userId,
           profile: JSON.stringify({}),
           medicalHistory: JSON.stringify({}),
           allergies: JSON.stringify([]),
           currentMedications: JSON.stringify([]),
-          // Initialize with empty list of adminIds
           adminIds: JSON.stringify([])
         };
         
@@ -307,14 +320,20 @@ export class UserService {
 
   async login(loginData: LoginData): Promise<AuthResult> {
     try {
-      // Find user by email
-      const filter = odata`PartitionKey eq 'USER' and email eq ${loginData.email}`;
-      const users = this.usersTableClient.listEntities<AzureTableUser>({ queryOptions: { filter } });
-      
+      // Find user by email across all roles
+      const roles = ['admin', 'patient', 'helper'];
       let user: AzureTableUser | null = null;
-      for await (const entity of users) {
-        user = entity;
-        break;
+      
+      for (const role of roles) {
+        const filter = odata`PartitionKey eq ${role} and email eq ${loginData.email}`;
+        const users = this.usersTableClient.listEntities<AzureTableUser>({ queryOptions: { filter } });
+        
+        for await (const entity of users) {
+          user = entity;
+          break;
+        }
+        
+        if (user) break;
       }
       
       if (!user) {
@@ -330,7 +349,7 @@ export class UserService {
       // Generate JWT token
       const token = jwt.sign(
         {
-          userId: user.rowKey,
+          userId: user.RowKey,
           email: user.email,
           role: user.role
         },
@@ -340,7 +359,7 @@ export class UserService {
       
       return {
         user: {
-          id: user.rowKey,
+          id: user.RowKey,
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
@@ -354,213 +373,104 @@ export class UserService {
     }
   }
 
-  // Assign a patient to an admin
+  async deleteUser(userId: string): Promise<void> {
+    try {
+      // First, find the user across different role partitions
+      let user = null;
+      const partitions = ['admin', 'patient', 'helper'];
+      
+      for (const partition of partitions) {
+        try {
+          user = await this.usersTableClient.getEntity(partition, userId);
+          if (user) break;
+        } catch (error) {
+          // Continue to next partition if user not found
+          continue;
+        }
+      }
+      
+      if (!user) {
+        throw new Error(`User with ID ${userId} not found`);
+      }
+
+      // If the user is an admin, handle admin-specific cleanup
+      if (user.partitionKey === 'admin') {
+        // Delete all medications they prescribed
+        const medications = await this.medicationsTableClient.listEntities({
+          queryOptions: {
+            filter: odata`prescribedBy eq '${userId}'`
+          }
+        });
+        
+        for await (const medication of medications) {
+          await this.medicationsTableClient.deleteEntity(medication.partitionKey as string, medication.rowKey as string);
+        }
+
+        // Get the admin's linked patients
+        let linkedPatients: string[] = [];
+        try {
+          linkedPatients = JSON.parse((user as any).linkedPatients || '[]');
+        } catch (error) {
+          console.error('Error parsing linkedPatients:', error);
+        }
+
+        // For each linked patient, we don't need to update anything since the relationship
+        // is only stored in the admin's linkedPatients field
+        console.log(`Admin ${userId} had ${linkedPatients.length} linked patients`);
+      }
+
+      // Delete the user entity
+      await this.usersTableClient.deleteEntity(user.partitionKey as string, user.rowKey as string);
+
+      // Delete any invitations where user is the inviter or invitee
+      const invitationService = new InvitationService();
+      const invitations = await invitationService.queryEntities(
+        `inviterUserId eq '${userId}' or inviteeUserId eq '${userId}'`
+      );
+      
+      for (const invitation of invitations as Invitation[]) {
+        await invitationService.deleteEntity(invitation.partitionKey, invitation.rowKey);
+      }
+
+      // Clean up notifications
+      const notifications = await this.notificationsTableClient.listEntities({
+        queryOptions: {
+          filter: odata`recipientId eq '${userId}' or actorId eq '${userId}'`
+        }
+      });
+      
+      for await (const notification of notifications) {
+        await this.notificationsTableClient.deleteEntity(notification.partitionKey as string, notification.rowKey as string);
+      }
+
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      throw error;
+    }
+  }
+
   async assignPatientToAdmin(patientId: string, adminId: string): Promise<void> {
     try {
-      // First, verify that the admin exists and is actually an admin
-      let admin: AzureTableUser | null = null;
-      try {
-        admin = await this.usersTableClient.getEntity<AzureTableUser>('USER', adminId);
-      } catch (error: any) {
-        if (error.statusCode === 404) {
-          throw new Error(`Admin with ID ${adminId} not found`);
-        }
-        throw error;
-      }
-
-      if (admin.role !== 'admin') {
-        throw new Error(`User with ID ${adminId} is not an admin`);
-      }
-
-      // Next, verify that the patient exists and is actually a patient
-      let patient: AzureTablePatient | null = null;
-      try {
-        patient = await this.patientsTableClient.getEntity<AzureTablePatient>('PATIENT', patientId);
-      } catch (error: any) {
-        if (error.statusCode === 404) {
-          throw new Error(`Patient with ID ${patientId} not found`);
-        }
-        throw error;
-      }
-
-      // Create a unique relation ID
-      const relationId = uuidv4();
-      const now = new Date().toISOString();
-
-      // Create the relation entity
-      const relationEntity = {
-        partitionKey: adminId,  // We partition by adminId for efficient querying
-        rowKey: `${patientId}-${relationId}`, // Ensure uniqueness with relationId
-        patientId: patientId,
-        adminId: adminId,
-        createdAt: now,
-        status: 'active'
-      };
-
-      // Create the relation in Azure Tables
-      await this.adminPatientRelationsTableClient.createEntity(relationEntity);
-
-      // Update the patient's adminIds array
-      const adminIds = JSON.parse(patient.adminIds || '[]');
+      const patient = await this.patientsTableClient.getEntity('patient', patientId);
+      const adminIds = JSON.parse((patient as any).adminIds || '[]');
       if (!adminIds.includes(adminId)) {
         adminIds.push(adminId);
-        
-        const patientUpdate = {
-          partitionKey: 'PATIENT',
-          rowKey: patientId,
-          adminIds: JSON.stringify(adminIds),
-          updatedAt: now
-        };
-        
-        await this.patientsTableClient.updateEntity(patientUpdate, "Merge");
+        await this.patientsTableClient.updateEntity({
+          PartitionKey: 'patient',
+          RowKey: patientId,
+          adminIds: JSON.stringify(adminIds)
+        }, "Merge");
       }
-
-      console.log(`Patient ${patientId} assigned to admin ${adminId}`);
     } catch (error) {
       console.error('Error assigning patient to admin:', error);
       throw error;
     }
   }
+}
 
-  // Remove a patient from an admin
-  async removePatientFromAdmin(patientId: string, adminId: string): Promise<void> {
-    try {
-      // Find the relation
-      const filter = odata`PartitionKey eq ${adminId} and patientId eq ${patientId}`;
-      const relations = this.adminPatientRelationsTableClient.listEntities({ queryOptions: { filter } });
-      
-      // Delete all matching relations
-      for await (const relation of relations) {
-        await this.adminPatientRelationsTableClient.deleteEntity(
-          relation.partitionKey as string,
-          relation.rowKey as string
-        );
-      }
-
-      // Update the patient's adminIds array
-      try {
-        const patient = await this.patientsTableClient.getEntity<AzureTablePatient>('PATIENT', patientId);
-        const adminIds = JSON.parse(patient.adminIds || '[]');
-        const updatedAdminIds = adminIds.filter((id: string) => id !== adminId);
-        
-        const patientUpdate = {
-          partitionKey: 'PATIENT',
-          rowKey: patientId,
-          adminIds: JSON.stringify(updatedAdminIds),
-          updatedAt: new Date().toISOString()
-        };
-        
-        await this.patientsTableClient.updateEntity(patientUpdate, "Merge");
-      } catch (error: any) {
-        if (error.statusCode !== 404) {
-          throw error;
-        }
-        // If patient not found, just log it
-        console.log(`Patient with ID ${patientId} not found when removing admin relation`);
-      }
-
-      console.log(`Patient ${patientId} removed from admin ${adminId}`);
-    } catch (error) {
-      console.error('Error removing patient from admin:', error);
-      throw error;
-    }
-  }
-
-  // Get all patients assigned to an admin
-  async getPatientsByAdminId(adminId: string): Promise<any[]> {
-    try {
-      // First, verify that the admin exists and is actually an admin
-      let admin: AzureTableUser | null = null;
-      try {
-        admin = await this.usersTableClient.getEntity<AzureTableUser>('USER', adminId);
-      } catch (error: any) {
-        if (error.statusCode === 404) {
-          throw new Error(`Admin with ID ${adminId} not found`);
-        }
-        throw error;
-      }
-
-      if (admin.role !== 'admin') {
-        throw new Error(`User with ID ${adminId} is not an admin`);
-      }
-
-      // Get all relations for this admin
-      const filter = odata`PartitionKey eq ${adminId}`;
-      const relations = this.adminPatientRelationsTableClient.listEntities({ queryOptions: { filter } });
-      
-      const patients = [];
-      for await (const relation of relations) {
-        try {
-          // Get the patient user info
-          const patientId = relation.patientId as string;
-          const patientUser = await this.usersTableClient.getEntity<AzureTableUser>('USER', patientId);
-          const patientData = await this.patientsTableClient.getEntity<AzureTablePatient>('PATIENT', patientId);
-          
-          patients.push({
-            id: patientUser.rowKey,
-            email: patientUser.email,
-            firstName: patientUser.firstName,
-            lastName: patientUser.lastName,
-            profile: JSON.parse(patientData.profile || '{}'),
-            medicalHistory: JSON.parse(patientData.medicalHistory || '{}'),
-            allergies: JSON.parse(patientData.allergies || '[]'),
-            currentMedications: JSON.parse(patientData.currentMedications || '[]')
-          });
-        } catch (error: any) {
-          // Skip patients that may have been deleted
-          if (error.statusCode !== 404) {
-            throw error;
-          }
-        }
-      }
-      
-      return patients;
-    } catch (error) {
-      console.error('Error getting patients by admin ID:', error);
-      throw error;
-    }
-  }
-
-  // Get all admins assigned to a patient
-  async getAdminsByPatientId(patientId: string): Promise<any[]> {
-    try {
-      // First, get the patient record to get the list of adminIds
-      let patient: AzureTablePatient | null = null;
-      try {
-        patient = await this.patientsTableClient.getEntity<AzureTablePatient>('PATIENT', patientId);
-      } catch (error: any) {
-        if (error.statusCode === 404) {
-          throw new Error(`Patient with ID ${patientId} not found`);
-        }
-        throw error;
-      }
-      
-      const adminIds = JSON.parse(patient.adminIds || '[]');
-      
-      // Get admin user info for each admin ID
-      const admins = [];
-      for (const adminId of adminIds) {
-        try {
-          const admin = await this.usersTableClient.getEntity<AzureTableUser>('USER', adminId);
-          
-          admins.push({
-            id: admin.rowKey,
-            email: admin.email,
-            firstName: admin.firstName,
-            lastName: admin.lastName
-          });
-        } catch (error: any) {
-          // Skip admins that may have been deleted
-          if (error.statusCode !== 404) {
-            throw error;
-          }
-        }
-      }
-      
-      return admins;
-    } catch (error) {
-      console.error('Error getting admins by patient ID:', error);
-      throw error;
-    }
-  }
+interface Invitation {
+  partitionKey: string;
+  rowKey: string;
+  inviteeUserId?: string;
+  inviteeEmail?: string;
 }

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import MedicationCard from '@/components/shared/MedicationCard'
 import ProgressChart from '@/components/shared/ProgressChart'
-import { Medications, Adherence, DashboardMedication } from '@/lib/types'
+import { Medications, DashboardMedication } from '@/lib/types'
 import { Camera, Check } from 'lucide-react'
 import PageLayout from '@/components/PageLayout'
 import handlePrescriptionUpload from '@/components/handlePrescriptionUpload'
@@ -12,11 +12,15 @@ import handlePrescriptionUpload from '@/components/handlePrescriptionUpload'
 interface AdherenceData {
   percentage: number;
   streak: number;
-  history: Array<{
+  dailyHistory: Array<{
     date: string;
     taken: number;
     total: number;
   }>;
+  totalVerifications: number;
+  successfulVerifications: number;
+  correctDoseVerifications: number;
+  incorrectDoseVerifications: number;
 }
 
 interface AdherenceRecord {
@@ -26,43 +30,34 @@ interface AdherenceRecord {
   patientId: string
 }
 
-// Default empty states
-const emptyAdherenceData = {
-  percentage: 0,
-  streak: 0,
-  history: [
-    { date: "Mon", taken: 0, total: 0 },
-    { date: "Tue", taken: 0, total: 0 },
-    { date: "Wed", taken: 0, total: 0 },
-    { date: "Thu", taken: 0, total: 0 },
-    { date: "Fri", taken: 0, total: 0 },
-    { date: "Sat", taken: 0, total: 0 },
-    { date: "Sun", taken: 0, total: 0 }
-  ]
+interface DashboardStats {
+  medications: DashboardMedication[];
+  adherenceData: AdherenceData;
+  unreadAlerts: number;
 }
 
-// Demo data for perfect adherence
-const demoAdherenceData = {
-  percentage: 100,
-  streak: 7,
-  history: [
-    { date: "Mon", taken: 3, total: 3 },
-    { date: "Tue", taken: 3, total: 3 },
-    { date: "Wed", taken: 3, total: 3 },
-    { date: "Thu", taken: 3, total: 3 },
-    { date: "Fri", taken: 3, total: 3 },
-    { date: "Sat", taken: 3, total: 3 },
-    { date: "Sun", taken: 3, total: 3 }
-  ]
+// Default empty states
+const emptyAdherenceData: AdherenceData = {
+  percentage: 0,
+  streak: 0,
+  dailyHistory: [],
+  totalVerifications: 0,
+  successfulVerifications: 0,
+  correctDoseVerifications: 0,
+  incorrectDoseVerifications: 0
 }
 
 export default function DashboardPage() {
-  const [medications, setMedications] = useState<DashboardMedication[]>([])
-  const [adherenceData, setAdherenceData] = useState<Adherence | typeof emptyAdherenceData | null>(null)
+  const [stats, setStats] = useState<DashboardStats>({
+    medications: [],
+    adherenceData: emptyAdherenceData,
+    unreadAlerts: 0
+  });
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const [isNavigating, setIsNavigating] = useState(false)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   const fetchDashboardData = async () => {
     try {
@@ -75,159 +70,127 @@ export default function DashboardPage() {
       }
 
       const user = JSON.parse(userStr);
-      // Check for id in the correct location based on your login response
-      const patientId = user.id || user.rowKey || user.RowKey; // Try all possible locations
+      const patientId = user.id || user.rowKey || user.RowKey;
 
       if (!patientId) {
-        console.error('User data:', user); // Debug log
-        // Instead of throwing error, set empty state for medications
-        setMedications([]);
-        // For demo purposes, always show perfect adherence
-        setAdherenceData(demoAdherenceData);
+        console.error('User data:', user);
+        setStats(prev => ({ ...prev, medications: [], adherenceData: emptyAdherenceData }));
         return;
       }
 
-      // Fetch medications with patientId
-      console.log('Fetching medications for patient ID:', patientId);
-      const medResponse = await fetch(`/api/medications?patientId=${patientId}`);
-      
-      // Log the raw response for debugging
+      // Fetch all required data in parallel
+      const [medResponse, alertsResponse, adherenceResponse] = await Promise.all([
+        fetch(`/api/medications?patientId=${patientId}`),
+        fetch(`/api/alerts?userId=${patientId}&role=patient&status=unread`),
+        fetch(`/api/adherence?patientId=${patientId}`)
+      ]);
+
+      if (!medResponse.ok || !adherenceResponse.ok) {
+        throw new Error('Failed to fetch dashboard data');
+      }
+
       const medResponseText = await medResponse.text();
-      console.log('Raw medications API response:', medResponseText);
+      const alertsData = await alertsResponse.json();
+      const adherenceData = await adherenceResponse.json();
       
-      // Parse the response text back to JSON
       let responseData;
       try {
         responseData = JSON.parse(medResponseText);
-        console.log('Parsed medication data:', responseData);
       } catch (e) {
         console.error('Error parsing medications response JSON:', e);
-        setMedications([]);
+        setStats(prev => ({ ...prev, medications: [] }));
         return;
       }
       
-      if (medResponse.ok) {
-        const medicationsData = responseData.medications || [];
-        console.log('Medications data from API:', medicationsData);
+      const medicationsData = responseData.medications || [];
+      const now = new Date();
+      const processedMedications = medicationsData.map((med: any) => {
+        const timeStr = med.time || '08:00';
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        const medTime = new Date();
+        medTime.setHours(hours, minutes, 0, 0);
         
-        const now = new Date();
-        
-        // Process medications to add status and time information
-        const processedMedications = medicationsData.map((med: any) => {
-          console.log('Processing medication:', med);
-          
-          // Default time if not provided
-          const timeStr = med.time || '08:00';
-          
-          // Create a date object for the medication time
-          const [hours, minutes] = timeStr.split(':').map(Number);
-          const medTime = new Date();
-          medTime.setHours(hours, minutes, 0, 0);
-          
-          // Determine status based on current time
-          let status = "upcoming";
-          if (medTime < now) {
-            // If medication time is in the past, mark as taken or missed
-            // This is simplified - in a real app, you'd check adherence records
-            status = Math.random() > 0.3 ? "taken" : "missed"; // Random for demo
-          }
-          
-          const processed = {
-            ...med,
-            id: med.rowKey || med.RowKey,
-            time: timeStr,
-            status,
-            isOverdue: medTime < now && status !== "taken",
-            isCurrent: Math.abs(medTime.getTime() - now.getTime()) < 1800000 // Within 30 minutes
-          };
-          
-          console.log('Processed medication:', processed);
-          return processed;
-        }) as DashboardMedication[];
-        
-        setMedications(processedMedications);
-        console.log('Final processed medications:', processedMedications);
-      } else {
-        console.error('Failed to fetch medications:', responseData);
-        setMedications([]);
-      }
-
-      // Fetch adherence data with patientId
-      console.log('Fetching adherence data for patient ID:', patientId);
-      try {
-        const adhResponse = await fetch(`/api/adherence?patientId=${patientId}`);
-        
-        // Log the raw response for debugging
-        const adhResponseText = await adhResponse.text();
-        console.log('Raw adherence API response:', adhResponseText);
-        
-        // Parse the response text back to JSON if possible
-        let adherenceData;
-        try {
-          adherenceData = JSON.parse(adhResponseText);
-          console.log('Parsed adherence data:', adherenceData);
-        } catch (e) {
-          console.error('Error parsing adherence response JSON:', e);
-          // For demo purposes, always show perfect adherence
-          setAdherenceData(demoAdherenceData);
-          return;
+        let status: 'taken' | 'missed' | 'upcoming' = "upcoming";
+        if (medTime < now) {
+          status = "missed";
         }
         
-        // For demo purposes, always show perfect adherence
-        setAdherenceData(demoAdherenceData);
-      } catch (adhError) {
-        // For demo purposes, always show perfect adherence
-        setAdherenceData(demoAdherenceData);
-      }
-
-    } catch (err) {
-      console.error('Dashboard error:', err);
-      // Set empty states for medications
-      setMedications([]);
-      // For demo purposes, always show 100% adherence
-      setAdherenceData({
-        percentage: 100,
-        streak: 7,
-        history: [
-          { date: "Mon", taken: 3, total: 3 },
-          { date: "Tue", taken: 3, total: 3 },
-          { date: "Wed", taken: 3, total: 3 },
-          { date: "Thu", taken: 3, total: 3 },
-          { date: "Fri", taken: 3, total: 3 },
-          { date: "Sat", taken: 3, total: 3 },
-          { date: "Sun", taken: 3, total: 3 }
-        ]
+        return {
+          ...med,
+          patientId: patientId,
+          status,
+          time: timeStr,
+          isOverdue: medTime < now && status === "missed",
+          isCurrent: Math.abs(medTime.getTime() - now.getTime()) < 1800000,
+          RowKey: med.RowKey || med.rowKey || med.id
+        };
       });
+
+      setStats({
+        medications: processedMedications,
+        adherenceData: {
+          percentage: parseInt(adherenceData.adherencePercentage),
+          streak: parseInt(adherenceData.streak),
+          dailyHistory: adherenceData.dailyAdherence.map((day: any) => ({
+            date: day.date,
+            taken: parseInt(day.taken),
+            total: parseInt(day.total)
+          })),
+          totalVerifications: parseInt(adherenceData.totalVerifications),
+          successfulVerifications: parseInt(adherenceData.successfulVerifications),
+          correctDoseVerifications: parseInt(adherenceData.correctDoseVerifications),
+          incorrectDoseVerifications: parseInt(adherenceData.incorrectDoseVerifications)
+        },
+        unreadAlerts: alertsData.length
+      });
+      
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    if (!userStr) {
-      router.push('/login');
-      return;
-    }
     fetchDashboardData();
-  }, [router]);
+  }, [refreshTrigger]);
 
-  const handleMedicationAction = async (medicationId: string, action: 'take' | 'snooze') => {
+  const handleMedicationAction = async (medicationId: string, action: 'taken' | 'missed' | 'skipped') => {
     try {
-      if (action === 'snooze') {
-        // Handle snooze action if needed
-        console.log('Medication snoozed:', medicationId);
+      const userStr = localStorage.getItem('user');
+      if (!userStr) {
+        throw new Error('User not found');
       }
-      
-      // For 'take' action, we don't need to do anything here
-      // The CameraModal component will handle the API call with pill verification data
-      
-      // Refresh dashboard data after action
-      await fetchDashboardData();
-    } catch (error) {
-      console.error('Error handling medication action:', error);
+
+      const user = JSON.parse(userStr);
+      const patientId = user.id || user.rowKey || user.RowKey;
+
+      const response = await fetch('/api/adherence', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          medicationId,
+          patientId,
+          status: action,
+          patientName: `${user.firstName} ${user.lastName}`
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update medication status');
+      }
+
+      // Trigger a refresh of the dashboard data
+      setRefreshTrigger(prev => prev + 1);
+    } catch (err) {
+      console.error('Error updating medication status:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update medication status');
     }
-  }
+  };
 
   // Add navigation handler
   const handleCameraClick = () => {
@@ -240,15 +203,14 @@ export default function DashboardPage() {
       {/* Progress Chart Section */}
       <div className="mb-6 sm:mb-8">
         <ProgressChart
-          data={adherenceData ? {
-            percentage: 'adherencePercentage' in adherenceData
-              ? Number(adherenceData.adherencePercentage)
-              : adherenceData.percentage,
-            streak: 'streak' in adherenceData ? adherenceData.streak : 0,
-            total: 0,  // Add calculation if needed
-            taken: 0,  // Add calculation if needed
-            missed: 0  // Add calculation if needed
-          } : undefined}
+          data={{
+            percentage: stats.adherenceData.percentage,
+            streak: stats.adherenceData.streak,
+            total: stats.adherenceData.totalVerifications,
+            taken: stats.adherenceData.correctDoseVerifications,
+            incorrect: stats.adherenceData.incorrectDoseVerifications,
+            missed: stats.adherenceData.totalVerifications - stats.adherenceData.successfulVerifications
+          }}
           loading={loading}
         />
       </div>
@@ -256,7 +218,7 @@ export default function DashboardPage() {
       {/* Pill Identification section removed - now accessible from sidebar */}
 
       {/* Today's Medications Section */}
-      {medications.length > 0 && (
+      {stats.medications.length > 0 && (
         <div className="mb-6 sm:mb-8">
           <div className="bg-white rounded-lg shadow-lg overflow-hidden">
             <div className="p-4 sm:p-6 border-b border-gray-100">
@@ -269,14 +231,28 @@ export default function DashboardPage() {
             </div>
             
             <div className="p-4 sm:p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900">Today's Medications</h2>
+                {stats.unreadAlerts > 0 && (
+                  <button
+                    onClick={() => router.push('/patient/alerts')}
+                    className="flex items-center gap-2 text-sm text-red-600 hover:text-red-700"
+                  >
+                    <span className="flex items-center justify-center w-5 h-5 bg-red-100 rounded-full">
+                      {stats.unreadAlerts}
+                    </span>
+                    Unread Alerts
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {medications.map((medication) => (
+                {stats.medications.map((medication) => (
                   <MedicationCard
-                    key={medication.id}
+                    key={medication.RowKey}
                     medication={medication}
                     showActions={true}
-                    onTake={() => handleMedicationAction(medication.id, 'take')}
-                    onSnooze={() => handleMedicationAction(medication.id, 'snooze')}
+                    onTake={() => handleMedicationAction(medication.RowKey, 'taken')}
+                    onSnooze={() => handleMedicationAction(medication.RowKey, 'missed')}
                   />
                 ))}
               </div>
@@ -286,7 +262,7 @@ export default function DashboardPage() {
       )}
       
       {/* Empty Medications State */}
-      {!loading && medications.length === 0 && (
+      {!loading && stats.medications.length === 0 && (
         <div className="mb-6 sm:mb-8">
           <div className="bg-white rounded-lg shadow-lg overflow-hidden">
             <div className="p-4 sm:p-6 border-b border-gray-100">

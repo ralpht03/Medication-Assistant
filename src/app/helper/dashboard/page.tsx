@@ -1,41 +1,196 @@
 "use client"
 
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect } from 'react'
+import PageLayout from '@/components/PageLayout'
+import { Bell, Users, AlertTriangle } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { TableClient } from '@azure/data-tables'
+import { Alerts } from '@/lib/types'
 
-export default function HelperDashboard() {
+interface AlertFilters {
+  status?: 'all' | 'unread' | 'read';
+  priority?: 'high' | 'medium' | 'low';
+}
+
+interface HelperDashboardData {
+  patients: any[];
+  alerts: Alerts[];
+  invitations: any[];
+}
+
+export default function HelperDashboardPage() {
+  const router = useRouter()
+  const [stats, setStats] = useState({
+    totalPatients: 0,
+    unreadAlerts: 0,
+    pendingInvitations: 0
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [dashboardData, setDashboardData] = useState<HelperDashboardData | null>(null)
+  const [alerts, setAlerts] = useState<Alerts[]>([])
+  const [filters, setFilters] = useState<AlertFilters>({
+    status: 'unread',
+    priority: 'high'
+  })
+
+  useEffect(() => {
+    fetchDashboardData()
+    fetchAlerts()
+    
+    // Set up polling for alerts
+    const interval = setInterval(() => {
+      fetchAlerts()
+    }, 30000) // Poll every 30 seconds
+
+    return () => clearInterval(interval)
+  }, [filters])
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true)
+      const userStr = localStorage.getItem('user')
+      if (!userStr) {
+        throw new Error('User not found')
+      }
+
+      const user = JSON.parse(userStr)
+      const helperId = user.id || user.rowKey
+
+      // Fetch data from existing APIs
+      const [patientsResponse, alertsResponse, invitationsResponse] = await Promise.all([
+        fetch(`/api/helper/patients`),
+        fetch(`/api/alerts?userId=${helperId}&role=helper&status=unread`),
+        fetch(`/api/helper/invitations`)
+      ])
+
+      if (!patientsResponse.ok) {
+        throw new Error(`Failed to fetch patients: ${patientsResponse.status} ${patientsResponse.statusText}`)
+      }
+      if (!alertsResponse.ok) {
+        console.error(`Failed to fetch alerts: ${alertsResponse.status} ${alertsResponse.statusText}`)
+        setAlerts([])
+      }
+      if (!invitationsResponse.ok) {
+        throw new Error(`Failed to fetch invitations: ${invitationsResponse.status} ${invitationsResponse.statusText}`)
+      }
+
+      const [patients, alerts, invitations] = await Promise.all([
+        patientsResponse.json(),
+        alertsResponse.ok ? alertsResponse.json() : Promise.resolve([]),
+        invitationsResponse.json()
+      ])
+
+      setStats({
+        totalPatients: patients.patients?.length || 0,
+        unreadAlerts: Array.isArray(alerts) ? alerts.length : 0,
+        pendingInvitations: invitations.length || 0
+      })
+    } catch (err) {
+      console.error('Error fetching stats:', err)
+      // Don't show error message, just keep the counts at 0
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchAlerts = async () => {
+    try {
+      const userStr = localStorage.getItem('user')
+      if (!userStr) {
+        throw new Error('User not found')
+      }
+
+      const user = JSON.parse(userStr)
+      const helperId = user.id || user.rowKey
+
+      const response = await fetch(`/api/alerts?userId=${helperId}&role=helper&status=${filters.status}`)
+      if (!response.ok) {
+        console.error(`Failed to fetch alerts: ${response.status} ${response.statusText}`)
+        setAlerts([])
+        return
+      }
+
+      const alerts = await response.json()
+      if (Array.isArray(alerts)) {
+        setAlerts(alerts)
+        // Update the unread alerts count in stats
+        setStats(prev => ({
+          ...prev,
+          unreadAlerts: alerts.filter(alert => !alert.read).length
+        }))
+      }
+    } catch (err) {
+      console.error('Error fetching alerts:', err)
+      setAlerts([])
+    }
+  }
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Patient Helper Dashboard</h1>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Patient Overview Card */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Patient Overview</h2>
-          <p className="text-gray-600 mb-4">View patient medication schedules and history</p>
-          <button className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-            View Details
-          </button>
+    <PageLayout userType="helper" title="Helper Dashboard">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div 
+          className="p-6 bg-white rounded-lg shadow hover:bg-gray-50 cursor-pointer" 
+          onClick={() => router.push('/helper/patients')}
+        >
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-500">Total Patients</h3>
+            <Users className="h-4 w-4 text-gray-500" />
+          </div>
+          <div className="mt-2">
+            <div className="text-2xl font-bold">{loading ? '...' : stats.totalPatients}</div>
+            <p className="text-xs text-gray-500">Patients you are assisting</p>
+          </div>
         </div>
 
-        {/* Adherence Tracking Card */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Adherence Tracking</h2>
-          <p className="text-gray-600 mb-4">Monitor medication adherence progress</p>
-          <button className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-            View Adherence
-          </button>
+        <div 
+          className="p-6 bg-white rounded-lg shadow hover:bg-gray-50 cursor-pointer" 
+          onClick={() => router.push('/helper/alerts')}
+        >
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-500">Unread Alerts</h3>
+            <AlertTriangle className="h-4 w-4 text-gray-500" />
+          </div>
+          <div className="mt-2">
+            <div className="text-2xl font-bold">{loading ? '...' : stats.unreadAlerts}</div>
+            <p className="text-xs text-gray-500">Alerts requiring attention</p>
+          </div>
         </div>
 
-        {/* Alerts & Notifications Card */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Alerts</h2>
-          <p className="text-gray-600 mb-4">View medication alerts and reminders</p>
-          <button className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-            Check Alerts
+        <div 
+          className="p-6 bg-white rounded-lg shadow hover:bg-gray-50 cursor-pointer" 
+          onClick={() => router.push('/helper/invitations')}
+        >
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-500">Pending Invitations</h3>
+            <Bell className="h-4 w-4 text-gray-500" />
+          </div>
+          <div className="mt-2">
+            <div className="text-2xl font-bold">{loading ? '...' : stats.pendingInvitations}</div>
+            <p className="text-xs text-gray-500">Invitations to review</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-8">
+        <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
+        <div className="grid gap-4 md:grid-cols-2">
+          <button
+            onClick={() => router.push('/helper/patients')}
+            className="p-4 bg-white border rounded-lg hover:bg-gray-50 text-left"
+          >
+            <h3 className="font-medium">View All Patients</h3>
+            <p className="text-sm text-gray-500">Manage your patient list and view their details</p>
+          </button>
+          <button
+            onClick={() => router.push('/helper/alerts')}
+            className="p-4 bg-white border rounded-lg hover:bg-gray-50 text-left"
+          >
+            <h3 className="font-medium">Check Alerts</h3>
+            <p className="text-sm text-gray-500">Review and respond to patient alerts</p>
           </button>
         </div>
       </div>
-    </div>
+    </PageLayout>
   )
 }

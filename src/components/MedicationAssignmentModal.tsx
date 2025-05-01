@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { X, AlertCircle, CheckCircle, Loader2 } from "lucide-react"
 
 interface Patient {
@@ -19,6 +19,20 @@ const MedicationAssignmentModal = ({
   onClose,
   onMedicationAssigned
 }: MedicationAssignmentModalProps) => {
+  // Preset medication options
+  const presetMedications = [
+    "Amoxicillin",
+    "Cefdinir",
+    "Diclofenac",
+    "Memantine",
+    "Men Multi",
+    "Negative",
+    "Omega3",
+    "One A Day Mens",
+    "One A Day Womens",
+    "Prednisone"
+  ]
+
   // Form state
   const [name, setName] = useState("")
   const [dosage, setDosage] = useState("")
@@ -30,13 +44,35 @@ const MedicationAssignmentModal = ({
   const [prescribingDoctor, setPrescribingDoctor] = useState("")
   const [pharmacy, setPharmacy] = useState("")
   const [notes, setNotes] = useState("")
-  const [refillsRemaining, setRefillsRemaining] = useState<number>(0)
+  const [refillsRemaining, setRefillsRemaining] = useState<string>("0")
+  const [recommendedPillCount, setRecommendedPillCount] = useState<string>("1")
   const [timeOfDay, setTimeOfDay] = useState<string[]>([])
 
   // UI state
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+
+  // Prefill prescribing doctor with logged-in admin's name
+  useEffect(() => {
+    try {
+      // Get the user from localStorage
+      const userStr = localStorage.getItem('user')
+      if (userStr) {
+        const user = JSON.parse(userStr)
+        // Check if the user is an admin
+        if (user.role === 'admin') {
+          // Set the prescribing doctor field with the admin's name
+          const adminName = `${user.firstName || ''} ${user.lastName || ''}`.trim()
+          if (adminName) {
+            setPrescribingDoctor(adminName)
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error getting admin information:', err)
+    }
+  }, [])
 
   // Time options
   const timeOptions = [
@@ -56,6 +92,24 @@ const MedicationAssignmentModal = ({
     )
   }
 
+  // Update the refills input handler
+  const handleRefillsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    // Only allow numeric input
+    if (/^\d*$/.test(value)) {
+      setRefillsRemaining(value);
+    }
+  };
+
+  // Update the recommended pill count input handler
+  const handleRecommendedPillCountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    // Only allow numeric input
+    if (/^\d*$/.test(value)) {
+      setRecommendedPillCount(value);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -64,7 +118,7 @@ const MedicationAssignmentModal = ({
       setError(null)
 
       // Validate required fields
-      if (!name || !dosage || !frequency || !startDate || !endDate || !verificationMethod || timeOfDay.length === 0) {
+      if (!name || !dosage || !frequency || !startDate || !endDate || !verificationMethod || !recommendedPillCount || timeOfDay.length === 0) {
         throw new Error("Please fill in all required fields")
       }
 
@@ -86,6 +140,7 @@ const MedicationAssignmentModal = ({
         pharmacy: pharmacy || undefined,
         notes: notes || undefined,
         refillsRemaining: refillsRemaining || 0,
+        recommendedPillCount: recommendedPillCount || "1",
         lastFilled: startDate // Initially set lastFilled to startDate
       }
 
@@ -158,15 +213,20 @@ const MedicationAssignmentModal = ({
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="medication-name">
                     Medication Name*
                   </label>
-                  <input
+                  <select
                     id="medication-name"
-                    type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                    placeholder="e.g., Lisinopril"
                     required
-                  />
+                  >
+                    <option value="">Select a medication</option>
+                    {presetMedications.map((medication) => (
+                      <option key={medication} value={medication}>
+                        {medication}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Dosage */}
@@ -281,11 +341,28 @@ const MedicationAssignmentModal = ({
                   </label>
                   <input
                     id="refills"
-                    type="number"
-                    min="0"
+                    type="text"
+                    pattern="\d*"
                     value={refillsRemaining}
-                    onChange={(e) => setRefillsRemaining(parseInt(e.target.value))}
+                    onChange={handleRefillsChange}
                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  />
+                </div>
+
+                {/* Recommended Pill Count */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="recommended-pill-count">
+                    Recommended Pill Count*
+                  </label>
+                  <input
+                    id="recommended-pill-count"
+                    type="text"
+                    pattern="\d*"
+                    value={recommendedPillCount}
+                    onChange={handleRecommendedPillCountChange}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    placeholder="e.g., 1"
+                    required
                   />
                 </div>
 

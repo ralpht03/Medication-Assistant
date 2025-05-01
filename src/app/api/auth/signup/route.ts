@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { AzureTableService } from '@/lib/azure/table-service'
+import jwt from 'jsonwebtoken'
 
 // Initialize the users table service with error handling
 let usersTable: AzureTableService;
@@ -87,7 +88,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
+    // Generate JWT token
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error('JWT_SECRET is not defined');
+    }
+    
+    const token = jwt.sign(
+      {
+        id: user.RowKey,
+        userId: user.RowKey, // Include both for compatibility
+        email: user.email,
+        role: user.role
+      },
+      secret,
+      { expiresIn: '7d' } // Set to 7 days
+    );
+    
+    // Create response with user data
+    const response = NextResponse.json({
       user: {
         id: user.RowKey,
         email: user.email,
@@ -95,7 +114,19 @@ export async function POST(request: NextRequest) {
         firstName: user.firstName,
         lastName: user.lastName
       }
-    })
+    });
+    
+    // Set token as cookie
+    response.cookies.set({
+      name: 'token',
+      value: token,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 // 7 days in seconds
+    });
+
+    return response;
   } catch (error: any) {
     console.error('Signup error:', error);
     

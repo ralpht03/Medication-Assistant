@@ -7,6 +7,7 @@ interface ProgressChartProps {
     total: number;
     taken: number;
     missed: number;
+    incorrect?: number;
   };
   loading?: boolean;
 }
@@ -58,13 +59,21 @@ export default function ProgressChart({ data, loading = false }: ProgressChartPr
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <div>
-            <div className="text-sm text-gray-500 mb-1">Taken</div>
+            <div className="text-sm text-gray-500 mb-1">Taken Correctly</div>
             <div className="text-lg font-semibold text-green-600">
               {data.taken}
             </div>
           </div>
+          {data.incorrect !== undefined && (
+            <div>
+              <div className="text-sm text-gray-500 mb-1">Incorrect Dose</div>
+              <div className="text-lg font-semibold text-yellow-600">
+                {data.incorrect}
+              </div>
+            </div>
+          )}
           <div>
             <div className="text-sm text-gray-500 mb-1">Missed</div>
             <div className="text-lg font-semibold text-red-600">

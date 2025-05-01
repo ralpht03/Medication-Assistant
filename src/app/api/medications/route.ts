@@ -73,7 +73,9 @@ export async function POST(request: Request) {
       patientId,
       medicationId,
       medication,
+      medications,
       question,
+      helperContext,
       // Direct fields for medication assignment
       name,
       dosage,
@@ -86,7 +88,8 @@ export async function POST(request: Request) {
       pharmacy,
       notes,
       refillsRemaining,
-      lastFilled
+      lastFilled,
+      recommendedPillCount
     } = body;
 
     // Ensure patientId is provided for all operations
@@ -121,6 +124,7 @@ export async function POST(request: Request) {
         pharmacy: pharmacy || '',
         notes: notes || '',
         refillsRemaining: refillsRemaining || 0,
+        recommendedPillCount: recommendedPillCount || '1',
         lastFilled: lastFilled || '',
         time: '08:00' // Default time
       };
@@ -196,67 +200,70 @@ export async function POST(request: Request) {
 
       // OpenAI Service Actions
       case 'info':
-        if (!medication?.name) {
-          return NextResponse.json({ error: 'Medication name is required' }, { status: 400 });
+        if (!medication) {
+          return NextResponse.json({ error: 'Medication data is required' }, { status: 400 });
         }
-        const infoResult = await openAIService.getMedicationInfo(medication.name);
-        return NextResponse.json({ info: infoResult });
+        const info = await openAIService.getMedicationInfo(medication, helperContext);
+        return NextResponse.json({ info });
 
       case 'sideEffects':
-        if (!medication?.name) {
-          return NextResponse.json({ error: 'Medication name is required' }, { status: 400 });
+        if (!medication) {
+          return NextResponse.json({ error: 'Medication data is required' }, { status: 400 });
         }
-        const effectsResult = await openAIService.getSideEffects(medication.name);
-        return NextResponse.json({ effects: effectsResult });
+        const effects = await openAIService.getSideEffects(medication, helperContext);
+        return NextResponse.json({ effects });
 
       case 'interactions':
-        const medications = body.medications || await medicationService.getMedications(patientId);
-        const interactionsResult = await openAIService.checkInteractions(medications);
-        return NextResponse.json({ interactions: interactionsResult });
+        if (!medications || !Array.isArray(medications)) {
+          return NextResponse.json({ error: 'Valid medications array is required' }, { status: 400 });
+        }
+        const interactions = await openAIService.checkInteractions(medications, helperContext);
+        return NextResponse.json({ interactions });
 
       case 'missedDose':
         if (!medication) {
           return NextResponse.json({ error: 'Medication data is required' }, { status: 400 });
         }
-        const missedDoseResult = await openAIService.handleMissedDose(medication);
-        return NextResponse.json({ guidance: missedDoseResult });
+        const guidance = await openAIService.getMissedDoseGuidance(medication, helperContext);
+        return NextResponse.json({ guidance });
 
       case 'emergency':
-        if (!question) {
-          return NextResponse.json({ error: 'Question is required' }, { status: 400 });
+        if (!medication) {
+          return NextResponse.json({ error: 'Medication data is required' }, { status: 400 });
         }
-        const emergencyResult = await openAIService.handleEmergencyQuestion(question, medication);
-        return NextResponse.json({ response: emergencyResult });
+        const emergencyGuidance = await openAIService.getEmergencyGuidance(medication, question, helperContext);
+        return NextResponse.json({ guidance: emergencyGuidance });
 
       case 'schedule':
-        const medsForSchedule = body.medications || await medicationService.getMedications(patientId);
-        const scheduleResult = await openAIService.getDailySchedule(medsForSchedule);
-        return NextResponse.json({ schedule: scheduleResult });
-        
-      case 'generalInfo':
-        // Handle general medical questions without medication context
-        if (!question) {
-          return NextResponse.json({ error: 'Question is required' }, { status: 400 });
+        if (!medications || !Array.isArray(medications)) {
+          return NextResponse.json({ error: 'Valid medications array is required' }, { status: 400 });
         }
-        const generalInfoResult = await openAIService.getGeneralMedicalInfo(question);
-        return NextResponse.json({ info: generalInfoResult });
-        
-      case 'generalQuestion':
-        // Handle any question without a specific category
-        if (!question) {
-          return NextResponse.json({ error: 'Question is required' }, { status: 400 });
-        }
-        const generalQuestionResult = await openAIService.answerGeneralQuestion(question);
-        return NextResponse.json({ response: generalQuestionResult });
-        
+        const schedule = await openAIService.getSchedule(medications, helperContext);
+        return NextResponse.json({ schedule });
+
       case 'allMedications':
-        // Handle questions about all medications
+        if (!medications || !Array.isArray(medications)) {
+          return NextResponse.json({ error: 'Valid medications array is required' }, { status: 400 });
+        }
         if (!question) {
           return NextResponse.json({ error: 'Question is required' }, { status: 400 });
         }
-        const allMeds = body.medications || await medicationService.getMedications(patientId);
-        const allMedsResult = await openAIService.getAllMedicationsInfo(question, allMeds);
-        return NextResponse.json({ response: allMedsResult });
+        const allMedInfo = await openAIService.getAllMedicationsInfo(medications, question, helperContext);
+        return NextResponse.json({ response: allMedInfo });
+
+      case 'generalInfo':
+        if (!question) {
+          return NextResponse.json({ error: 'Question is required' }, { status: 400 });
+        }
+        const generalInfo = await openAIService.getGeneralMedicalInfo(question, helperContext);
+        return NextResponse.json({ response: generalInfo });
+
+      case 'generalQuestion':
+        if (!question) {
+          return NextResponse.json({ error: 'Question is required' }, { status: 400 });
+        }
+        const generalResponse = await openAIService.answerGeneralQuestion(question, helperContext);
+        return NextResponse.json({ response: generalResponse });
 
       default:
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
@@ -278,88 +285,53 @@ export async function POST(request: Request) {
   }
 }
 
-// Add PUT method for updating medications
 export async function PUT(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const patientId = searchParams.get('patientId');
-    const medicationId = searchParams.get('medicationId');
-    
-    if (!patientId || !medicationId) {
-      return NextResponse.json(
-        { error: 'Patient ID and Medication ID are required' }, 
-        { status: 400 }
-      );
-    }
-    
     const body = await request.json();
-    const updatedMedication = await medicationService.updateMedication(patientId, medicationId, body);
-    
+    const { patientId, medicationId, medication } = body;
+
+    if (!patientId || !medicationId || !medication) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // Update the medication
+    const updatedMedication = await medicationService.updateMedication(patientId, medicationId, medication);
     if (!updatedMedication) {
       return NextResponse.json({ error: 'Medication not found' }, { status: 404 });
     }
-    
+
     return NextResponse.json({
       message: 'Medication updated successfully',
       medication: updatedMedication
     });
   } catch (error) {
     console.error('Error updating medication:', error);
-    if (error instanceof Error) {
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      });
-    }
     return NextResponse.json(
-      { error: 'Failed to update medication', details: (error as Error).message },
+      { error: 'Failed to update medication' },
       { status: 500 }
     );
   }
 }
 
-// Add DELETE method for deleting medications
 export async function DELETE(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const patientId = searchParams.get('patientId');
-    const medicationId = searchParams.get('medicationId');
-    const deleteAll = searchParams.get('deleteAll');
-    
-    if (!patientId) {
-      return NextResponse.json({ error: 'Patient ID is required' }, { status: 400 });
+    const body = await request.json();
+    const { patientId, medicationId } = body;
+
+    if (!patientId || !medicationId) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
-    
-    // Delete all medications for a patient
-    if (deleteAll === 'true') {
-      await medicationService.deleteAllMedications(patientId);
-      return NextResponse.json({ message: 'All medications deleted successfully' });
-    }
-    
-    // Delete a specific medication
-    if (!medicationId) {
-      return NextResponse.json({ error: 'Medication ID is required' }, { status: 400 });
-    }
-    
-    const deleted = await medicationService.deleteMedication(patientId, medicationId);
-    
-    if (!deleted) {
-      return NextResponse.json({ error: 'Medication not found' }, { status: 404 });
-    }
-    
-    return NextResponse.json({ message: 'Medication deleted successfully' });
+
+    // Delete the medication
+    await medicationService.deleteMedication(patientId, medicationId);
+
+    return NextResponse.json({
+      message: 'Medication deleted successfully'
+    });
   } catch (error) {
     console.error('Error deleting medication:', error);
-    if (error instanceof Error) {
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      });
-    }
     return NextResponse.json(
-      { error: 'Failed to delete medication', details: (error as Error).message },
+      { error: 'Failed to delete medication' },
       { status: 500 }
     );
   }

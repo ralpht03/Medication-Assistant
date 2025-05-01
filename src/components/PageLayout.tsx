@@ -3,12 +3,14 @@
 import { ReactNode } from 'react'
 import Header from './Header'
 import AdminHeader from './AdminHeader'
+import HelperHeader from './HelperHeader'
 import Sidebar from './Sidebar'
 import AdminSidebar from './AdminSidebar'
+import HelperSidebar from './HelperSidebar'
 
 interface PageLayoutProps {
   children: ReactNode
-  userType: 'patient' | 'admin'
+  userType: 'patient' | 'admin' | 'helper'
   title?: string
 }
 
@@ -17,22 +19,30 @@ interface PageLayoutProps {
  * This ensures the sidebar and header are positioned consistently
  */
 export default function PageLayout({ children, userType, title }: PageLayoutProps) {
-  const HeaderComponent = userType === 'admin' ? AdminHeader : Header
-  const SidebarComponent = userType === 'admin' ? AdminSidebar : Sidebar
+  const HeaderComponent = userType === 'admin' 
+    ? AdminHeader 
+    : userType === 'helper'
+    ? HelperHeader
+    : Header
+  const SidebarComponent = userType === 'admin' 
+    ? AdminSidebar 
+    : userType === 'helper'
+    ? HelperSidebar
+    : Sidebar
 
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Fixed Header */}
-      <div className="fixed top-0 left-0 right-0 z-20">
+      <div className="fixed top-0 left-0 right-0 z-30">
         <HeaderComponent />
       </div>
       
       {/* Fixed Sidebar - White Background */}
-      <div className="fixed left-0 top-0 bottom-0 w-64 z-10 bg-white shadow-md">
+      <div className="fixed left-0 top-0 bottom-0 w-64 z-20 bg-white/50 shadow-md">
         {/* Spacer to push content below header */}
-        <div className="h-16 bg-white"></div>
+        <div className="h-16 bg-white/50"></div>
         {/* Sidebar content */}
-        <div className="h-[calc(100vh-4rem)] bg-white overflow-y-auto">
+        <div className="h-[calc(100vh-4rem)] bg-white/50 overflow-y-auto">
           <SidebarComponent />
         </div>
       </div>

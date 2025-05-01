@@ -1,4 +1,6 @@
-import { AzureTableService } from './table-service';
+import { AzureTableService } from '../azure-table-utils';
+import { odata } from '@azure/data-tables';
+import { ensureTableExists } from '../azure-table-utils';
 
 export interface Invitation {
   PartitionKey: string;  // "INVITATION"
@@ -8,6 +10,8 @@ export interface Invitation {
   inviterEmail: string;  // Email of the inviter
   inviterName: string;   // Name of the inviter
   inviteeEmail: string;  // Email of the person being invited
+  inviteeName: string;   // Name of the person being invited
+  inviteeUserId?: string; // ID of the user being invited (if they exist)
   inviteeRole: string;   // Role being assigned (patient or helper)
   token: string;         // Unique secure token for the invitation link
   status: string;        // "pending", "accepted", "expired", "declined"
@@ -21,22 +25,37 @@ export class InvitationService {
 
   constructor() {
     this.tableService = new AzureTableService('Invitations');
+    // Ensure the Invitations table exists
+    ensureTableExists('Invitations').catch(error => {
+      console.error('Failed to ensure Invitations table exists:', error);
+    });
   }
 
-  async createInvitation(invitation: any) {
-    return await this.tableService.createEntity(invitation);
+  async createInvitation(invitation: Omit<Invitation, 'PartitionKey' | 'RowKey'>) {
+    const newInvitation = {
+      ...invitation,
+      PartitionKey: 'INVITATION',
+      RowKey: crypto.randomUUID()
+    };
+    return await this.tableService.createEntity(newInvitation);
   }
 
   async getInvitationsByInvitee(email: string) {
-    return await this.tableService.queryEntities(`inviteeEmail eq '${email}'`);
+    return await this.tableService.queryEntities(
+      odata`inviteeEmail eq '${email}'`
+    );
   }
 
   async getInvitationsByInviter(userId: string) {
-    return await this.tableService.queryEntities(`inviterUserId eq '${userId}'`);
+    return await this.tableService.queryEntities(
+      odata`inviterUserId eq '${userId}'`
+    );
   }
 
   async getInvitationByToken(token: string) {
-    const results = await this.tableService.queryEntities(`token eq '${token}'`);
+    const results = await this.tableService.queryEntities(
+      odata`token eq '${token}'`
+    );
     return results.length > 0 ? results[0] : null;
   }
 
@@ -48,7 +67,7 @@ export class InvitationService {
     }, "Merge");
   }
 
-  async queryEntities(filter: string) {
+  async queryEntities(filter: string | ReturnType<typeof odata>) {
     return await this.tableService.queryEntities(filter);
   }
 
@@ -57,7 +76,9 @@ export class InvitationService {
   }
 
   async getInvitationByRowKey(rowKey: string) {
-    const results = await this.tableService.queryEntities(`RowKey eq '${rowKey}'`);
+    const results = await this.tableService.queryEntities(
+      odata`RowKey eq '${rowKey}'`
+    );
     return results.length > 0 ? results[0] : null;
   }
 

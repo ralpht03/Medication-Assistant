@@ -107,15 +107,6 @@ const AdminSidebar = () => {
             <Settings className="h-4 w-4 text-gray-500 mr-3" />
             Settings
           </Link>
-          <Link
-            href="/admin/notifications"
-            className={`flex items-center px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg ${
-              pathname === '/admin/notifications' ? 'bg-blue-50 text-blue-600' : ''
-            }`}
-          >
-            <Bell className="h-4 w-4 text-gray-500 mr-3" />
-            Notification Settings
-          </Link>
         </div>
         
         <div className="mt-4">

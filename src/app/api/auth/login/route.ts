@@ -32,18 +32,25 @@ export async function POST(request: Request) {
     }
 
     try {
-      // Query user by email
-      const users = await usersTable.queryEntities(`email eq '${email}'`);
+      // Query user by email across all roles
+      const roles = ['admin', 'patient', 'helper'];
+      let user = null;
       
-      if (users.length === 0) {
+      for (const role of roles) {
+        const users = await usersTable.queryEntities(`PartitionKey eq '${role}' and email eq '${email}'`);
+        if (users.length > 0) {
+          user = users[0];
+          break;
+        }
+      }
+      
+      if (!user) {
         return NextResponse.json(
           { message: 'Invalid credentials' },
           { status: 401 }
         );
       }
 
-      const user = users[0];
-      
       // In production, use proper password comparison
       if (user.passwordHash !== password) {
         return NextResponse.json(
