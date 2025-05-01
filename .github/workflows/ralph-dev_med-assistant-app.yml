@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    timeout-minutes: 10  # ⏱ Timeout for the build job
 
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +22,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      # ⬇️ Inject secrets into .env.local (you can rename to .env.production if needed)
+      # ⬇️ Inject secrets into .env.local (you can switch to .env.production if needed)
       - name: Create .env.local file
         run: |
           echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env.local
@@ -55,8 +56,8 @@ jobs:
           AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
           AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
 
-      # ✅ Clean up any invalid colon-based metadata files (e.g. Zone.Identifier)
-      - name: Remove invalid Windows metadata files
+      # Remove invalid metadata files like :Zone.Identifier
+      - name: Remove invalid metadata files
         run: |
           find . -type f -name '*:*' -exec rm -f {} +
 
@@ -70,11 +71,11 @@ jobs:
             package.json
             package-lock.json
             next.config.ts
-            node_modules/
 
   deploy:
     runs-on: ubuntu-latest
     needs: build
+    timeout-minutes: 10  #  Timeout for the deploy job
     environment:
       name: 'Production'
       url: https://med-assistant-app.azurewebsites.net
