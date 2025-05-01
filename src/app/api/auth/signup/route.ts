@@ -4,9 +4,14 @@ import jwt from 'jsonwebtoken'
 
 // Initialize the users table service with error handling
 let usersTable: AzureTableService;
+try {
+  usersTable = new AzureTableService('Users');
+} catch (error) {
+  console.error('Failed to initialize Users table service:', error);
+  // We'll handle this in the API route
+}
 
 export async function POST(request: NextRequest) {
-  usersTable = new AzureTableService('Users');
   try {
     // Check if the users table was initialized properly
     if (!usersTable) {

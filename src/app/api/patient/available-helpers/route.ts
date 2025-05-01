@@ -3,10 +3,10 @@ import { AzureTableService } from '@/lib/azure/table-service';
 import { getSession } from '@/lib/auth';
 import { InvitationService } from '@/lib/azure/invitation-service';
 
+const usersService = new AzureTableService('Users');
+const invitationService = new InvitationService();
 
 export async function GET(request: NextRequest) {
-  const usersService = new AzureTableService('Users');
-  const invitationService = new InvitationService();
   try {
     // Get authenticated user using the centralized getSession
     const session = await getSession(request);

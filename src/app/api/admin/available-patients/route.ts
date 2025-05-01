@@ -4,11 +4,10 @@ import { InvitationService } from '@/lib/azure/invitation-service';
 import { getSession } from '@/lib/auth';
 import { odata } from '@azure/data-tables';
 
+const usersService = new AzureTableService('Users');
+const invitationService = new InvitationService();
 
 export async function GET(request: NextRequest) {
-  // Table services
-  const usersService = new AzureTableService('Users');
-  const invitationService = new InvitationService();
   try {
     console.log('Starting available patients fetch...');
     

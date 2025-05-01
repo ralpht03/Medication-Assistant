@@ -8,12 +8,15 @@ let userService: UserService;
 let medicationService: MedicationService;
 let usersTableClient: TableClient;
 
-
-export async function GET(request: Request) {
-  // Table services
+try {
   userService = new UserService();
   medicationService = new MedicationService();
   usersTableClient = createTableClient('Users');
+} catch (error) {
+  console.error('Error initializing services:', error);
+}
+
+export async function GET(request: Request) {
   try {
     // Get the admin ID from the request headers
     const userStr = request.headers.get('user');

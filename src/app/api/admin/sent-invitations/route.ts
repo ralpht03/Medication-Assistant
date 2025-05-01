@@ -3,10 +3,10 @@ import { InvitationService, Invitation } from '@/lib/azure/invitation-service';
 import { AzureTableService } from '@/lib/azure/table-service';
 import { getSession } from '@/lib/auth';
 
+const invitationService = new InvitationService();
+const usersService = new AzureTableService('Users');
 
 export async function GET(request: NextRequest) {
-  const invitationService = new InvitationService();
-  const usersService = new AzureTableService('Users');
   try {
     // Get authenticated user using the centralized getSession
     const session = await getSession(request);
@@ -50,8 +50,6 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const invitationService = new InvitationService();
-  const usersService = new AzureTableService('Users');
   try {
     // Get authenticated user using the centralized getSession
     const session = await getSession(request);

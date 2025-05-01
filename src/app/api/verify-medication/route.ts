@@ -4,6 +4,41 @@ import { ApiKeyCredentials } from "@azure/ms-rest-js";
 import { VerificationLogs, Alerts } from '@/lib/types';
 import { AzureTableService } from '@/lib/azure/table-service';
 
+// Validate and log environment variables in development
+if (process.env.NODE_ENV === 'development') {
+  console.log('Custom Vision Configuration:', {
+    hasKey: !!process.env.CUSTOM_VISION_KEY,
+    hasEndpoint: !!process.env.CUSTOM_VISION_ENDPOINT,
+    endpoint: process.env.CUSTOM_VISION_ENDPOINT,
+    projectId: process.env.CUSTOM_VISION_PROJECT_ID,
+    iterationName: process.env.CUSTOM_VISION_ITERATION_NAME
+  });
+}
+
+// Validate environment variables
+if (!process.env.CUSTOM_VISION_ENDPOINT || !process.env.CUSTOM_VISION_KEY) {
+  throw new Error('Missing required environment variables for Custom Vision');
+}
+
+// Format the endpoint correctly
+const endpoint = process.env.CUSTOM_VISION_ENDPOINT?.replace(/\/+$/, ''); // Remove trailing slashes
+
+// Log the exact configuration being used
+console.log('Custom Vision Configuration:', {
+  keyLength: process.env.CUSTOM_VISION_KEY?.length,
+  endpoint,
+  projectId: process.env.CUSTOM_VISION_PROJECT_ID,
+  iterationName: process.env.CUSTOM_VISION_ITERATION_NAME
+});
+
+const predictionClient = new PredictionAPIClient(
+  new ApiKeyCredentials({
+    inHeader: {
+      "Prediction-key": process.env.CUSTOM_VISION_KEY // Note: case sensitive!
+    }
+  }),
+  endpoint
+);
 
 interface Prediction {
   probability: number;
@@ -29,22 +64,11 @@ interface VerificationResult {
   };
 }
 
+// The endpoint from your Azure Custom Vision
+const PREDICTION_ENDPOINT = process.env.CUSTOM_VISION_ENDPOINT;
+const PREDICTION_KEY = process.env.CUSTOM_VISION_KEY;
+
 export async function POST(request: Request) {
-  // Format the endpoint correctly
-  const endpoint = process.env.CUSTOM_VISION_ENDPOINT?.replace(/\/+$/, ''); // Remove trailing slashes
-
-  const predictionClient = new PredictionAPIClient(
-    new ApiKeyCredentials({
-      inHeader: {
-        "Prediction-key": process.env.CUSTOM_VISION_KEY // Note: case sensitive!
-      }
-    }),
-    endpoint
-  );
-  // The endpoint from your Azure Custom Vision
-  const PREDICTION_ENDPOINT = process.env.CUSTOM_VISION_ENDPOINT;
-  const PREDICTION_KEY = process.env.CUSTOM_VISION_KEY;
-
   try {
     const requestData = await request.json();
     const { image, medicationId, patientId } = requestData;
