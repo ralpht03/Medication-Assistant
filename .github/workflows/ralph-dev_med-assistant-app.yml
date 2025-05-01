@@ -24,6 +24,21 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+      
+      - name: Create .env.production file
+        run: |
+          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env.production
+          echo "AZURE_STORAGE_ACCOUNT=${{ secrets.AZURE_STORAGE_ACCOUNT }}" >> .env.production
+          echo "AZURE_STORAGE_ACCOUNT_KEY=${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}" >> .env.production
+          echo "AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" >> .env.production
+          echo "CUSTOM_VISION_KEY=${{ secrets.CUSTOM_VISION_KEY }}" >> .env.production
+          echo "CUSTOM_VISION_ENDPOINT=${{ secrets.CUSTOM_VISION_ENDPOINT }}" >> .env.production
+          echo "CUSTOM_VISION_PROJECT_ID=${{ secrets.CUSTOM_VISION_PROJECT_ID }}" >> .env.production
+          echo "CUSTOM_VISION_ITERATION_NAME=${{ secrets.CUSTOM_VISION_ITERATION_NAME }}" >> .env.production
+          echo "AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT }}" >> .env.production
+          echo "AZURE_OPENAI_KEY=${{ secrets.AZURE_OPENAI_KEY }}" >> .env.production
+          echo "AZURE_OPENAI_DEPLOYMENT=${{ secrets.AZURE_OPENAI_DEPLOYMENT }}" >> .env.production
+          echo "AZURE_OPENAI_API_VERSION=${{ secrets.AZURE_OPENAI_API_VERSION }}" >> .env.production
 
       - name: build
         run: |
