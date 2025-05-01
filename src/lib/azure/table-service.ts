@@ -1,34 +1,39 @@
-// src/lib/azure/table-service.ts
-import { TableClient, AzureNamedKeyCredential, odata } from "@azure/data-tables";
+import { TableClient, odata } from "@azure/data-tables";
 
 export class AzureTableService {
-  private tableClient: TableClient;
+  private tableClient: TableClient | null = null;
+  private tableName: string;
 
   constructor(tableName: string) {
-    // Check for required environment variable
-    if (!process.env.AZURE_STORAGE_CONNECTION_STRING) {
+    this.tableName = tableName;
+    // Delay initialization until needed
+  }
+
+  private ensureClient() {
+    if (this.tableClient) return;
+
+    const connString = process.env.AZURE_STORAGE_CONNECTION_STRING;
+    if (!connString) {
       throw new Error('AZURE_STORAGE_CONNECTION_STRING environment variable is not defined');
     }
-    
+
     try {
-      // Use the connection string directly
-      this.tableClient = TableClient.fromConnectionString(
-        process.env.AZURE_STORAGE_CONNECTION_STRING,
-        tableName
-      );
+      this.tableClient = TableClient.fromConnectionString(connString, this.tableName);
     } catch (error) {
       console.error('Error initializing Azure Table Service:', error);
-      throw new Error(`Failed to initialize Azure Table Service for table '${tableName}': ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to initialize Azure Table Service for table '${this.tableName}': ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   async createEntity(entity: any) {
-    return await this.tableClient.createEntity(entity);
+    this.ensureClient();
+    return await this.tableClient!.createEntity(entity);
   }
 
   async getEntity(partitionKey: string, rowKey: string) {
+    this.ensureClient();
     try {
-      return await this.tableClient.getEntity(partitionKey, rowKey);
+      return await this.tableClient!.getEntity(partitionKey, rowKey);
     } catch (error) {
       console.error('Error getting entity:', error);
       return null;
@@ -36,18 +41,18 @@ export class AzureTableService {
   }
 
   async queryEntities<T extends object>(query: string | ReturnType<typeof odata>): Promise<T[]> {
+    this.ensureClient();
     try {
       console.log('Executing query:', query);
       const entities: T[] = [];
-      const iterator = this.tableClient.listEntities<T>({
+      const iterator = this.tableClient!.listEntities<T>({
         queryOptions: { filter: typeof query === 'string' ? query : String(query) }
       });
-      
+
       for await (const entity of iterator) {
         entities.push(entity);
       }
-      
-      console.log(`Found ${entities.length} entities for query:`, query);
+
       return entities;
     } catch (error) {
       console.error('Error querying entities:', error);
@@ -56,10 +61,12 @@ export class AzureTableService {
   }
 
   async updateEntity(entity: any, mode: "Merge" | "Replace" = "Merge") {
-    return await this.tableClient.updateEntity(entity, mode);
+    this.ensureClient();
+    return await this.tableClient!.updateEntity(entity, mode);
   }
 
   async deleteEntity(partitionKey: string, rowKey: string) {
-    return await this.tableClient.deleteEntity(partitionKey, rowKey);
+    this.ensureClient();
+    return await this.tableClient!.deleteEntity(partitionKey, rowKey);
   }
 }
